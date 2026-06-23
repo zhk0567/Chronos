@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-electron/
+release/
+data/entries/
+data/analysis/
+data/reports/
+data/meta/
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+.env

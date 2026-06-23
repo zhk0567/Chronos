@@ -22,15 +22,20 @@ def score_emotions(
     entries: list[DiaryEntry],
     llm: OllamaClient,
     use_llm: bool = True,
+    chunk_size: int = 30,
 ) -> list[EmotionPoint]:
-    if use_llm and entries:
+    if not use_llm or not entries:
+        return _heuristic_emotions(entries)
+
+    all_points: list[EmotionPoint] = []
+    for start in range(0, len(entries), chunk_size):
+        chunk = entries[start : start + chunk_size]
         try:
-            batch = [{"date": e.date, "content": e.content[:500]} for e in entries]
+            batch = [{"date": e.date, "content": e.content[:400]} for e in chunk]
             user = EMOTION_USER.format(entries_json=json.dumps(batch, ensure_ascii=False))
             data = llm.chat_json(EMOTION_SYSTEM, user)
-            points = []
             for item in data.get("emotions", []):
-                points.append(
+                all_points.append(
                     EmotionPoint(
                         date=item["date"],
                         score=float(item.get("score", 5)),
@@ -39,11 +44,11 @@ def score_emotions(
                         confidence=float(item.get("confidence", 0.7)),
                     )
                 )
-            if points:
-                return _fill_missing(entries, points)
         except Exception:
-            pass
+            all_points.extend(_heuristic_emotions(chunk))
 
+    if all_points:
+        return _fill_missing(entries, all_points)
     return _heuristic_emotions(entries)
 
 

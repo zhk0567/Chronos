@@ -19,7 +19,11 @@ def analyze_themes(
 
     if use_llm and len(entries) >= 3:
         try:
-            summaries = [{"date": e.date, "text": e.content[:200]} for e in entries]
+            sample = entries
+            if len(entries) > 60:
+                step = max(1, len(entries) // 60)
+                sample = entries[::step][:60]
+            summaries = [{"date": e.date, "text": e.content[:150]} for e in sample]
             user = THEME_USER.format(summaries_json=json.dumps(summaries, ensure_ascii=False))
             data = llm.chat_json(THEME_SYSTEM, user)
             tracks = []

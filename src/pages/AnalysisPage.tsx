@@ -2,16 +2,26 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AnalysisProgress, AnalysisRunSummary, EngineHealth } from '../types/analysis';
 
-const DEFAULT_MODEL = 'minimax-m3:cloud';
+const DEFAULT_MODEL = 'gemma3:4b';
 
 const STEP_LABELS: Record<string, string> = {
   extract: '形态分类与信息抽取',
   emotion: '情绪评分',
+  context: '语境数据加载',
+  align: '多源对齐',
   anchors: '锚点涌现',
-  factors: '因素识别',
+  factors: '控制变量因素分析',
   network: '关系网络',
+  interaction: '交互效应',
+  environment: '环境敏感性',
+  physio: '生理-心理耦合',
+  warning: '预警模式',
   language: '语言模式',
   themes: '主题分析',
+  chains: '锚点关联链',
+  story: '生命故事',
+  selves: '多元自我',
+  reframe: '问题叙事识别',
   report: '报告生成',
 };
 
@@ -64,7 +74,10 @@ export default function AnalysisPage() {
 
   return (
     <div className="page">
-      <h2>分析引擎</h2>
+      <header className="page-header">
+        <h2>分析引擎</h2>
+        <p className="hint">对今年全部日记运行 18 步分析流水线，生成洞察报告与叙事模块。</p>
+      </header>
 
       <div className="card">
         <h3>引擎状态</h3>

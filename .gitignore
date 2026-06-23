@@ -6,6 +6,9 @@ data/entries/
 data/analysis/
 data/reports/
 data/meta/
+data/context/
+data/imports/
+data/settings.json
 *.pyc
 __pycache__/
 .venv/

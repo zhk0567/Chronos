@@ -7,14 +7,24 @@ from datetime import datetime, timezone
 
 from schemas.models import (
     AnchorCard,
+    ChainLink,
+    DailyContext,
     FactorConclusion,
     InsightReport,
+    InteractionEffect,
     LanguageMetric,
+    LifeStoryBook,
     PersonNode,
+    PhysioCoupling,
+    ReframeCandidate,
     ReportConclusion,
     ReportSection,
+    SelfVoiceMap,
+    SpaceEmotionLink,
     StabilityMetric,
     ThemeTrack,
+    WarningPattern,
+    WeatherSensitivity,
 )
 
 
@@ -30,7 +40,29 @@ def build_report(
     relationships: list[PersonNode],
     language_patterns: list[LanguageMetric],
     themes: list[ThemeTrack],
+    daily_contexts: list[DailyContext] | None = None,
+    environment_sensitivity: list[WeatherSensitivity] | None = None,
+    space_emotions: list[SpaceEmotionLink] | None = None,
+    physio_couplings: list[PhysioCoupling] | None = None,
+    interaction_effects: list[InteractionEffect] | None = None,
+    warning_patterns: list[WarningPattern] | None = None,
+    context_completeness: dict[str, float] | None = None,
+    chain_links: list[ChainLink] | None = None,
+    life_story: LifeStoryBook | None = None,
+    self_voice_map: SelfVoiceMap | None = None,
+    reframe_candidates: list[ReframeCandidate] | None = None,
 ) -> InsightReport:
+    daily_contexts = daily_contexts or []
+    environment_sensitivity = environment_sensitivity or []
+    space_emotions = space_emotions or []
+    physio_couplings = physio_couplings or []
+    interaction_effects = interaction_effects or []
+    warning_patterns = warning_patterns or []
+    context_completeness = context_completeness or {}
+    chain_links = chain_links or []
+    reframe_candidates = reframe_candidates or []
+    self_voice_map = self_voice_map or SelfVoiceMap()
+
     sections = [
         _stability_section(stability, emotion_series),
         _factor_section("promoting", "促进因素", promoting),
@@ -38,15 +70,22 @@ def build_report(
         _relationship_section(relationships),
         _language_section(language_patterns),
         _theme_section(themes),
+        _environment_section(environment_sensitivity, space_emotions),
+        _warning_section(warning_patterns),
+        _narrative_section(chain_links, life_story, self_voice_map, reframe_candidates),
     ]
 
-    limitations = _build_limitations(entry_count, emotion_series)
+    if interaction_effects:
+        sections.insert(4, _interaction_section(interaction_effects))
+
+    limitations = _build_limitations(entry_count, emotion_series, context_completeness)
 
     completeness = {
         "entries": min(1.0, entry_count / 30),
         "emotion": min(1.0, len(emotion_series) / max(1, entry_count)),
         "anchors": min(1.0, len(anchors) / 5),
         "factors": min(1.0, (len(promoting) + len(damaging)) / 3),
+        **context_completeness,
     }
 
     return InsightReport(
@@ -65,6 +104,16 @@ def build_report(
         sections=sections,
         limitations=limitations,
         dataCompleteness=completeness,
+        dailyContexts=daily_contexts,
+        environmentSensitivity=environment_sensitivity,
+        spaceEmotions=space_emotions,
+        physioCouplings=physio_couplings,
+        interactionEffects=interaction_effects,
+        warningPatterns=warning_patterns,
+        chainLinks=chain_links,
+        lifeStory=life_story,
+        selfVoiceMap=self_voice_map if self_voice_map.profiles else None,
+        reframeCandidates=reframe_candidates,
     )
 
 
@@ -95,15 +144,19 @@ def _stability_section(stability: list[StabilityMetric], emotion_series: list) -
 
 
 def _factor_section(section_id: str, title: str, factors: list[FactorConclusion]) -> ReportSection:
-    conclusions = [
-        ReportConclusion(
-            id=f.id,
-            statement=f.statement,
-            confidence=f.confidence,
-            evidence=f.evidence,
+    conclusions = []
+    for f in factors:
+        stmt = f.statement
+        if f.controlled_for:
+            stmt += f" [controlled: {', '.join(f.controlled_for)}]"
+        conclusions.append(
+            ReportConclusion(
+                id=f.id,
+                statement=stmt,
+                confidence=f.confidence,
+                evidence=f.evidence,
+            )
         )
-        for f in factors
-    ]
     if not conclusions:
         conclusions.append(
             ReportConclusion(
@@ -196,11 +249,167 @@ def _theme_section(themes: list[ThemeTrack]) -> ReportSection:
     return ReportSection(id="themes", title="主题演变", conclusions=conclusions)
 
 
-def _build_limitations(entry_count: int, emotion_series: list) -> list[str]:
-    limits = [
-        "所有推断均基于日记文本，未控制外部变量（天气、睡眠等）",
-        "LLM 抽取结果标注为「系统推断」，与原文明确陈述区分",
+def _environment_section(
+    sensitivity: list[WeatherSensitivity],
+    space: list[SpaceEmotionLink],
+) -> ReportSection:
+    conclusions = []
+    for s in sensitivity:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=s.description,
+                confidence=s.confidence,
+                evidence=s.evidence,
+            )
+        )
+    for sp in space:
+        type_label = {"restorative": "恢复性", "stressful": "压力性", "neutral": "中性"}.get(
+            sp.link_type.value, ""
+        )
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"「{sp.place}」为{type_label}空间，情绪基调 {sp.emotional_tone:+.2f}",
+                confidence=0.5,
+                evidence=sp.evidence,
+            )
+        )
+    if not conclusions:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement="环境敏感性数据不足（请配置常驻城市或导入位置数据）",
+                confidence=0.2,
+                limitation="缺少天气或位置数据",
+                evidence=[],
+            )
+        )
+    return ReportSection(id="environment", title="环境敏感性", conclusions=conclusions)
+
+
+def _warning_section(patterns: list[WarningPattern]) -> ReportSection:
+    conclusions = [
+        ReportConclusion(
+            id=p.id,
+            statement=p.statement,
+            confidence=p.confidence,
+            evidence=p.evidence,
+        )
+        for p in patterns
     ]
+    if not conclusions:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement="暂未识别到稳定的个人预警模式",
+                confidence=0.3,
+                limitation="需要更多多源数据与情绪低谷样本",
+                evidence=[],
+            )
+        )
+    return ReportSection(id="warnings", title="个人预警模式", conclusions=conclusions)
+
+
+def _interaction_section(effects: list[InteractionEffect]) -> ReportSection:
+    return ReportSection(
+        id="interactions",
+        title="因素交互效应",
+        conclusions=[
+            ReportConclusion(
+                id=e.id,
+                statement=e.statement,
+                confidence=e.confidence,
+                evidence=e.evidence,
+            )
+            for e in effects
+        ],
+    )
+
+
+def _narrative_section(
+    chain_links: list[ChainLink],
+    life_story: LifeStoryBook | None,
+    self_voice_map: SelfVoiceMap,
+    reframe_candidates: list[ReframeCandidate],
+) -> ReportSection:
+    conclusions: list[ReportConclusion] = []
+
+    if chain_links:
+        by_type: dict[str, int] = {}
+        for c in chain_links:
+            by_type[c.type] = by_type.get(c.type, 0) + 1
+        type_str = "、".join(f"{k}×{v}" for k, v in by_type.items())
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"识别到 {len(chain_links)} 条锚点关联链（{type_str}）",
+                confidence=0.7,
+                evidence=[e for c in chain_links[:3] for e in c.evidence[:1]],
+            )
+        )
+
+    if life_story and life_story.lines:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"梳理出 {len(life_story.lines)} 条生命叙事线，可在「故事」页翻阅",
+                confidence=0.65,
+                evidence=[],
+            )
+        )
+
+    if self_voice_map.profiles:
+        voice_names = "、".join(p.label for p in self_voice_map.profiles[:4])
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"识别到多元自我声音：{voice_names}",
+                confidence=0.6,
+                evidence=[e for p in self_voice_map.profiles for e in p.evidence[:1]][:3],
+            )
+        )
+
+    if reframe_candidates:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"发现 {len(reframe_candidates)} 条可探索的内化问题叙事，可在「重构」页发起对话",
+                confidence=0.55,
+                evidence=reframe_candidates[0].exception_moments[:2],
+            )
+        )
+
+    if not conclusions:
+        conclusions.append(
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement="叙事数据不足，需更多锚点或内省型日记",
+                confidence=0.3,
+                limitation="样本量有限",
+                evidence=[],
+            )
+        )
+
+    return ReportSection(id="narrative", title="叙事脉络", conclusions=conclusions)
+
+
+def _build_limitations(
+    entry_count: int,
+    emotion_series: list,
+    context_completeness: dict[str, float],
+) -> list[str]:
+    limits = [
+        "LLM 抽取结果标注为「系统推断」，与原文明确陈述区分",
+        "缺失的多源数据不做插补",
+        "生命故事与重构对话仅提供另一种解读角度，非心理诊断或建议",
+    ]
+    if context_completeness.get("weather", 0) < 0.5:
+        limits.append("天气数据覆盖不足，环境敏感性结论受限")
+    if context_completeness.get("wearable", 0) < 0.3:
+        limits.append("可穿戴数据不足，生理-心理耦合分析受限")
+    else:
+        limits.append("部分因素分析已尝试控制天气、睡眠等外部变量")
     if entry_count < 30:
         limits.append(f"当前仅 {entry_count} 篇日记，统计结论置信度受限")
     if len(emotion_series) < 10:

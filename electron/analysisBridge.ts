@@ -5,8 +5,13 @@ import type {
   AnalysisRunSummary,
   DiaryEntry,
   InsightReport,
+  LifeStoryBook,
+  ReframeCandidate,
+  ReframeSession,
+  SelfVoiceMap,
 } from '../src/types/analysis';
 import type { PythonManager } from './pythonManager';
+import { getSettings } from './settingsStore';
 
 export class AnalysisBridge {
   constructor(
@@ -32,7 +37,30 @@ export class AnalysisBridge {
         }
       }
     }
-    return runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    runs.sort((a, b) => {
+      const aDone = a.completedAt ?? a.startedAt;
+      const bDone = b.completedAt ?? b.startedAt;
+      return bDone.localeCompare(aDone);
+    });
+    const preferred = getSettings(this.appRoot).defaultRunId;
+    if (preferred) {
+      const idx = runs.findIndex((r) => r.runId === preferred);
+      if (idx > 0) {
+        const [pinned] = runs.splice(idx, 1);
+        runs.unshift(pinned);
+      }
+    }
+    return runs;
+  }
+
+  getDefaultRunId(): string | null {
+    const runs = this.listRuns();
+    const completed = runs.filter((r) => r.status === 'completed');
+    const preferred = getSettings(this.appRoot).defaultRunId;
+    if (preferred && completed.some((r) => r.runId === preferred)) {
+      return preferred;
+    }
+    return completed[0]?.runId ?? runs[0]?.runId ?? null;
   }
 
   getReport(runId: string): InsightReport | null {
@@ -127,5 +155,44 @@ export class AnalysisBridge {
     const jsonPath = path.join(this.runsDir(), runId, 'report.json');
     if (!fs.existsSync(jsonPath)) return null;
     return fs.readFileSync(jsonPath, 'utf-8');
+  }
+
+  async reframeStart(runId: string, candidateId: string, model: string): Promise<ReframeSession> {
+    await this.python.ensureReady();
+    const res = await fetch(`${this.python.baseUrl}/reframe/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ runId, candidateId, model }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<ReframeSession>;
+  }
+
+  async reframeMessage(
+    sessionId: string,
+    runId: string,
+    candidateId: string,
+    message: string,
+    model: string
+  ): Promise<ReframeSession> {
+    await this.python.ensureReady();
+    const res = await fetch(`${this.python.baseUrl}/reframe/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ sessionId, runId, candidateId, message, model }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<ReframeSession>;
+  }
+
+  async reframeFinalize(sessionId: string, model: string): Promise<ReframeSession> {
+    await this.python.ensureReady();
+    const res = await fetch(`${this.python.baseUrl}/reframe/finalize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ sessionId, model }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<ReframeSession>;
   }
 }

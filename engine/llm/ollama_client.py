@@ -40,6 +40,20 @@ class OllamaClient:
                     user = user + "\n\n请严格输出合法 JSON，不要包含 markdown 代码块。"
         raise RuntimeError(f"LLM JSON parse failed: {last_err}")
 
+    def chat(self, system: str, user: str) -> str:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": False,
+        }
+        res = self._client.post(f"{self.base_url}/api/chat", json=payload)
+        res.raise_for_status()
+        data = res.json()
+        return data.get("message", {}).get("content", "")
+
     def _chat(self, system: str, user: str) -> str:
         payload = {
             "model": self.model,

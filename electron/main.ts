@@ -13,6 +13,24 @@ import {
 } from './diaryStore';
 import { PythonManager } from './pythonManager';
 import { AnalysisBridge } from './analysisBridge';
+import {
+  getStoryBook,
+  getSelfVoiceMap,
+  listReframeCandidates,
+  saveStoryEdit,
+  getReframeSession,
+} from './narrativeStore';
+import { getSettings, saveSettings, getContextCompleteness, type UserSettings } from './settingsStore';
+import {
+  runContextImport,
+  listContextSources,
+  testWeatherConnection,
+  readCsvHeaders,
+  previewCsvRows,
+  saveManualLocation,
+  type ImportType,
+  type ColumnMapping,
+} from './contextStore';
 
 let mainWindow: BrowserWindow | null = null;
 let appRoot = '';
@@ -37,7 +55,7 @@ function getAppRoot(): string {
 }
 
 function ensureDataDirs(root: string) {
-  for (const sub of ['entries', 'analysis', 'reports']) {
+  for (const sub of ['entries', 'analysis', 'reports', 'imports', 'context/weather', 'context/wearable', 'context/digital', 'context/location', 'story/edits', 'reframe/sessions']) {
     const dir = path.join(root, 'data', sub);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
@@ -50,7 +68,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    backgroundColor: '#f5f0e8',
+    backgroundColor: '#eceae6',
     title: 'Chronos',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -63,7 +81,6 @@ function createWindow() {
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
@@ -110,6 +127,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('chronos:listRuns', () => analysisBridge!.listRuns());
+  ipcMain.handle('chronos:getDefaultRunId', () => analysisBridge!.getDefaultRunId());
 
   ipcMain.handle('chronos:getReport', (_e, runId: string) => analysisBridge!.getReport(runId));
 
@@ -135,6 +153,62 @@ function registerIpc() {
     return syncFromEcho(appRoot, echoRoot);
   });
 
+  ipcMain.handle('chronos:getSettings', () => getSettings(appRoot));
+  ipcMain.handle('chronos:saveSettings', (_e, partial: Partial<UserSettings>) =>
+    saveSettings(appRoot, partial)
+  );
+  ipcMain.handle('chronos:getContextCompleteness', () => {
+    const entries = listEntries(appRoot);
+    return getContextCompleteness(
+      appRoot,
+      entries.map((e) => e.date)
+    );
+  });
+  ipcMain.handle('chronos:listContextSources', () => listContextSources(appRoot));
+
+  ipcMain.handle('chronos:testWeather', async () => {
+    const settings = getSettings(appRoot);
+    if (settings.latitude == null || settings.longitude == null) {
+      return { ok: false, error: '请先保存常驻城市以获取坐标' };
+    }
+    return testWeatherConnection(appRoot, settings.latitude, settings.longitude);
+  });
+
+  ipcMain.handle('chronos:previewCsv', (_e, filePath: string) => ({
+    headers: readCsvHeaders(filePath),
+    rows: previewCsvRows(filePath, 3),
+  }));
+
+  ipcMain.handle(
+    'chronos:importContext',
+    async (_e, sourcePath: string, type: ImportType, columnMapping?: ColumnMapping) => {
+      return runContextImport(appRoot, sourcePath, type, columnMapping);
+    }
+  );
+
+  ipcMain.handle(
+    'chronos:saveManualLocation',
+    (_e, date: string, primaryPlace: string, placeType: string) => {
+      saveManualLocation(appRoot, date, primaryPlace, placeType);
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle('chronos:pickContextFile', async (_e, type: ImportType) => {
+    const filters: Record<ImportType, Electron.FileFilter[]> = {
+      apple_health: [{ name: 'Apple Health', extensions: ['xml'] }],
+      wearable_csv: [{ name: 'CSV', extensions: ['csv'] }],
+      screen_time: [{ name: 'CSV', extensions: ['csv'] }],
+      gpx: [{ name: 'GPX', extensions: ['gpx'] }],
+      manual_location: [{ name: 'Location JSON', extensions: ['json'] }],
+    };
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      filters: filters[type] ?? [{ name: 'All', extensions: ['*'] }],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
   ipcMain.handle('chronos:startAnalysis', async (event, model: string) => {
     const entries = listEntries(appRoot);
     if (entries.length === 0) {
@@ -146,6 +220,33 @@ function registerIpc() {
       webContents.send('chronos:analysisProgress', progress);
     });
   });
+
+  ipcMain.handle('chronos:getStoryBook', (_e, runId: string) => getStoryBook(appRoot, runId));
+  ipcMain.handle('chronos:getSelfVoiceMap', (_e, runId: string) => getSelfVoiceMap(appRoot, runId));
+  ipcMain.handle('chronos:listReframeCandidates', (_e, runId: string) =>
+    listReframeCandidates(appRoot, runId)
+  );
+  ipcMain.handle(
+    'chronos:saveStoryEdit',
+    (_e, runId: string, lineId: string, status: string, userNote?: string) => {
+      saveStoryEdit(appRoot, runId, lineId, status as 'auto' | 'accepted' | 'rejected' | 'edited', userNote);
+      return { ok: true };
+    }
+  );
+  ipcMain.handle('chronos:reframeStart', (_e, runId: string, candidateId: string, model: string) =>
+    analysisBridge!.reframeStart(runId, candidateId, model)
+  );
+  ipcMain.handle(
+    'chronos:reframeMessage',
+    (_e, sessionId: string, runId: string, candidateId: string, message: string, model: string) =>
+      analysisBridge!.reframeMessage(sessionId, runId, candidateId, message, model)
+  );
+  ipcMain.handle('chronos:reframeFinalize', (_e, sessionId: string, model: string) =>
+    analysisBridge!.reframeFinalize(sessionId, model)
+  );
+  ipcMain.handle('chronos:getReframeSession', (_e, sessionId: string) =>
+    getReframeSession(appRoot, sessionId)
+  );
 }
 
 app.whenReady().then(async () => {

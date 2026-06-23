@@ -17,8 +17,11 @@ dependencies = [
     "scipy>=1.14.0",
     "networkx>=3.4.0",
     "jieba>=0.42.1",
+    "chinese-calendar>=1.9.0",
+    "statsmodels>=0.14.0",
+    "gpxpy>=1.6.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["schemas*", "pipeline*", "llm*", "utils*"]
+include = ["schemas*", "pipeline*", "llm*", "utils*", "context*"]

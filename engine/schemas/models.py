@@ -128,6 +128,17 @@ class EmergenceType(str, Enum):
     SILENCE = "silence"
 
 
+class ChainLink(BaseModel):
+    id: str
+    type: Literal["causal", "theme", "person", "contrast", "evolution"]
+    anchor_ids: list[str] = Field(alias="anchorIds")
+    description: str
+    confidence: float
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
 class AnchorCard(BaseModel):
     id: str
     date: str
@@ -138,6 +149,7 @@ class AnchorCard(BaseModel):
     source_span: Optional[SourceSpan] = Field(None, alias="sourceSpan")
     related_unit_ids: list[str] = Field(default_factory=list, alias="relatedUnitIds")
     evidence: list[Evidence] = Field(default_factory=list)
+    chain_links: list[ChainLink] = Field(default_factory=list, alias="chainLinks")
 
     model_config = {"populate_by_name": True}
 
@@ -258,6 +270,22 @@ class InsightReport(BaseModel):
     sections: list[ReportSection] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     data_completeness: dict[str, float] = Field(default_factory=dict, alias="dataCompleteness")
+    daily_contexts: list[DailyContext] = Field(default_factory=list, alias="dailyContexts")
+    environment_sensitivity: list[WeatherSensitivity] = Field(
+        default_factory=list, alias="environmentSensitivity"
+    )
+    space_emotions: list[SpaceEmotionLink] = Field(default_factory=list, alias="spaceEmotions")
+    physio_couplings: list[PhysioCoupling] = Field(default_factory=list, alias="physioCouplings")
+    interaction_effects: list[InteractionEffect] = Field(
+        default_factory=list, alias="interactionEffects"
+    )
+    warning_patterns: list[WarningPattern] = Field(default_factory=list, alias="warningPatterns")
+    chain_links: list[ChainLink] = Field(default_factory=list, alias="chainLinks")
+    life_story: Optional["LifeStoryBook"] = Field(None, alias="lifeStory")
+    self_voice_map: Optional["SelfVoiceMap"] = Field(None, alias="selfVoiceMap")
+    reframe_candidates: list["ReframeCandidate"] = Field(
+        default_factory=list, alias="reframeCandidates"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -279,3 +307,235 @@ class AnalysisProgress(BaseModel):
     percent: float
 
     model_config = {"populate_by_name": True}
+
+
+# --- Phase 2: context & settings ---
+
+
+class UserSettings(BaseModel):
+    resident_city: str = Field(default="", alias="residentCity")
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    timezone: str = "Asia/Shanghai"
+
+    model_config = {"populate_by_name": True}
+
+
+class WeatherContext(BaseModel):
+    temp: Optional[float] = None
+    humidity: Optional[float] = None
+    precipitation: Optional[float] = None
+    sunshine: Optional[float] = None
+    aqi: Optional[float] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class RhythmContext(BaseModel):
+    weekday: int
+    weekday_label: str = Field(alias="weekdayLabel")
+    month: int
+    holiday: Optional[str] = None
+    solar_term: Optional[str] = Field(None, alias="solarTerm")
+
+    model_config = {"populate_by_name": True}
+
+
+class WearableContext(BaseModel):
+    steps: Optional[float] = None
+    sleep_hours: Optional[float] = Field(None, alias="sleepHours")
+    resting_hr: Optional[float] = Field(None, alias="restingHr")
+
+    model_config = {"populate_by_name": True}
+
+
+class DigitalContext(BaseModel):
+    screen_time_min: Optional[float] = Field(None, alias="screenTimeMin")
+    top_apps: list[str] = Field(default_factory=list, alias="topApps")
+
+    model_config = {"populate_by_name": True}
+
+
+class LocationContext(BaseModel):
+    primary_place: Optional[str] = Field(None, alias="primaryPlace")
+    place_type: Optional[str] = Field(None, alias="placeType")
+
+    model_config = {"populate_by_name": True}
+
+
+class DailyContext(BaseModel):
+    date: str
+    weather: Optional[WeatherContext] = None
+    rhythm: Optional[RhythmContext] = None
+    wearable: Optional[WearableContext] = None
+    digital: Optional[DigitalContext] = None
+    location: Optional[LocationContext] = None
+    missing_flags: list[str] = Field(default_factory=list, alias="missingFlags")
+
+    model_config = {"populate_by_name": True}
+
+
+class WeatherSensitivity(BaseModel):
+    metric: str
+    coefficient: float
+    confidence: float
+    description: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class SpaceEmotionLink(BaseModel):
+    place: str
+    emotional_tone: float = Field(alias="emotionalTone")
+    link_type: Literal["restorative", "stressful", "neutral"] = Field(alias="linkType")
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class PhysioCoupling(BaseModel):
+    metric: str
+    lag_days: int = Field(alias="lagDays")
+    correlation: float
+    leads_emotion: bool = Field(alias="leadsEmotion")
+    description: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class InteractionEffect(BaseModel):
+    id: str
+    factors: list[str]
+    effect_type: Literal["risk", "protective"] = Field(alias="effectType")
+    combined_effect: float = Field(alias="combinedEffect")
+    exceeds_additive: bool = Field(alias="exceedsAdditive")
+    statement: str
+    confidence: float
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class WarningPattern(BaseModel):
+    id: str
+    signals: list[str]
+    lead_days: int = Field(alias="leadDays")
+    confidence: float
+    statement: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+# --- Phase 3: narrative ---
+
+
+class StoryNode(BaseModel):
+    anchor_id: str = Field(alias="anchorId")
+    date: str
+    title: str
+    emotion_score: Optional[float] = Field(None, alias="emotionScore")
+    summary: str
+
+    model_config = {"populate_by_name": True}
+
+
+class NarrativeLine(BaseModel):
+    id: str
+    title: str
+    theme_or_relation: str = Field(alias="themeOrRelation")
+    nodes: list[StoryNode] = Field(default_factory=list)
+    emotion_arc: list[float] = Field(default_factory=list, alias="emotionArc")
+    tone_shift: Optional[str] = Field(None, alias="toneShift")
+    status: Literal["auto", "accepted", "rejected", "edited"] = "auto"
+    user_note: Optional[str] = Field(None, alias="userNote")
+
+    model_config = {"populate_by_name": True}
+
+
+class LifeStoryBook(BaseModel):
+    run_id: str = Field(alias="runId")
+    lines: list[NarrativeLine] = Field(default_factory=list)
+    generated_at: str = Field(alias="generatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class SelfVoiceProfile(BaseModel):
+    voice_type: Literal["critic", "comforter", "dreamer", "observer", "other"] = Field(
+        alias="voiceType"
+    )
+    label: str
+    description: str
+    mention_count: int = Field(alias="mentionCount")
+    dates: list[str] = Field(default_factory=list)
+    sample_quotes: list[str] = Field(default_factory=list, alias="sampleQuotes")
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class VoiceTimelinePoint(BaseModel):
+    date: str
+    proportions: dict[str, float]
+
+    model_config = {"populate_by_name": True}
+
+
+class VoiceTransition(BaseModel):
+    from_voice: str = Field(alias="fromVoice")
+    to_voice: str = Field(alias="toVoice")
+    count: int
+    description: str
+
+    model_config = {"populate_by_name": True}
+
+
+class StarLayoutPoint(BaseModel):
+    voice_type: str = Field(alias="voiceType")
+    x: float
+    y: float
+
+    model_config = {"populate_by_name": True}
+
+
+class SelfVoiceMap(BaseModel):
+    profiles: list[SelfVoiceProfile] = Field(default_factory=list)
+    timeline: list[VoiceTimelinePoint] = Field(default_factory=list)
+    transitions: list[VoiceTransition] = Field(default_factory=list)
+    star_layout: list[StarLayoutPoint] = Field(default_factory=list, alias="starLayout")
+
+    model_config = {"populate_by_name": True}
+
+
+class ReframeCandidate(BaseModel):
+    id: str
+    problem_statement: str = Field(alias="problemStatement")
+    internalized_pattern: str = Field(alias="internalizedPattern")
+    frequency: int
+    exception_moments: list[Evidence] = Field(default_factory=list, alias="exceptionMoments")
+    related_anchor_ids: list[str] = Field(default_factory=list, alias="relatedAnchorIds")
+
+    model_config = {"populate_by_name": True}
+
+
+class ReframeMessage(BaseModel):
+    role: Literal["user", "guide"]
+    text: str
+    timestamp: str
+
+    model_config = {"populate_by_name": True}
+
+
+class ReframeSession(BaseModel):
+    id: str
+    run_id: str = Field(alias="runId")
+    candidate_id: str = Field(alias="candidateId")
+    messages: list[ReframeMessage] = Field(default_factory=list)
+    original_narrative: str = Field(alias="originalNarrative")
+    alternative_story: Optional[str] = Field(None, alias="alternativeStory")
+
+    model_config = {"populate_by_name": True}
+
+
+InsightReport.model_rebuild()

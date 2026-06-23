@@ -128,6 +128,7 @@ export interface AnchorCard {
   sourceSpan?: SourceSpan | null;
   relatedUnitIds: string[];
   evidence: Evidence[];
+  chainLinks?: ChainLink[];
 }
 
 export interface EmotionPoint {
@@ -223,6 +224,16 @@ export interface InsightReport {
   sections: ReportSection[];
   limitations: string[];
   dataCompleteness: Record<string, number>;
+  dailyContexts?: DailyContext[];
+  environmentSensitivity?: WeatherSensitivity[];
+  spaceEmotions?: SpaceEmotionLink[];
+  physioCouplings?: PhysioCoupling[];
+  interactionEffects?: InteractionEffect[];
+  warningPatterns?: WarningPattern[];
+  chainLinks?: ChainLink[];
+  lifeStory?: LifeStoryBook | null;
+  selfVoiceMap?: SelfVoiceMap | null;
+  reframeCandidates?: ReframeCandidate[];
 }
 
 export interface AnalysisProgress {
@@ -239,4 +250,217 @@ export interface EngineHealth {
   ollama: boolean;
   ollamaModel?: string;
   error?: string;
+}
+
+export interface UserSettings {
+  residentCity: string;
+  latitude: number | null;
+  longitude: number | null;
+  timezone: string;
+  defaultRunId?: string | null;
+}
+
+export interface ContextCompleteness {
+  weather: number;
+  wearable: number;
+  digital: number;
+  location: number;
+  rhythm: number;
+}
+
+export interface ContextImportResult {
+  type: string;
+  daysImported: number;
+  source: string;
+}
+
+export interface ColumnMapping {
+  date?: string;
+  steps?: string;
+  sleep?: string;
+  hr?: string;
+  minutes?: string;
+  app?: string;
+}
+
+export interface CsvPreview {
+  headers: string[];
+  rows: Record<string, string>[];
+}
+
+export interface WeatherTestResult {
+  ok: boolean;
+  sampleTemp?: number | null;
+  date?: string;
+  error?: string;
+}
+
+export interface WeatherContext {
+  temp?: number | null;
+  humidity?: number | null;
+  precipitation?: number | null;
+  sunshine?: number | null;
+}
+
+export interface RhythmContext {
+  weekday: number;
+  weekdayLabel: string;
+  month: number;
+  holiday?: string | null;
+  solarTerm?: string | null;
+}
+
+export interface DailyContext {
+  date: string;
+  weather?: WeatherContext | null;
+  rhythm?: RhythmContext | null;
+  missingFlags: string[];
+}
+
+export interface WeatherSensitivity {
+  metric: string;
+  coefficient: number;
+  confidence: number;
+  description: string;
+  evidence: Evidence[];
+}
+
+export interface SpaceEmotionLink {
+  place: string;
+  emotionalTone: number;
+  linkType: 'restorative' | 'stressful' | 'neutral';
+  evidence: Evidence[];
+}
+
+export interface PhysioCoupling {
+  metric: string;
+  lagDays: number;
+  correlation: number;
+  leadsEmotion: boolean;
+  description: string;
+  evidence: Evidence[];
+}
+
+export interface InteractionEffect {
+  id: string;
+  factors: string[];
+  effectType: 'risk' | 'protective';
+  combinedEffect: number;
+  exceedsAdditive: boolean;
+  statement: string;
+  confidence: number;
+  evidence: Evidence[];
+}
+
+export interface WarningPattern {
+  id: string;
+  signals: string[];
+  leadDays: number;
+  confidence: number;
+  statement: string;
+  evidence: Evidence[];
+}
+
+export type ChainLinkType = 'causal' | 'theme' | 'person' | 'contrast' | 'evolution';
+
+export interface ChainLink {
+  id: string;
+  type: ChainLinkType;
+  anchorIds: string[];
+  description: string;
+  confidence: number;
+  evidence: Evidence[];
+}
+
+export interface StoryNode {
+  anchorId: string;
+  date: string;
+  title: string;
+  emotionScore?: number | null;
+  summary: string;
+}
+
+export type NarrativeLineStatus = 'auto' | 'accepted' | 'rejected' | 'edited';
+
+export interface NarrativeLine {
+  id: string;
+  title: string;
+  themeOrRelation: string;
+  nodes: StoryNode[];
+  emotionArc: number[];
+  toneShift?: string | null;
+  status: NarrativeLineStatus;
+  userNote?: string | null;
+}
+
+export interface LifeStoryBook {
+  runId: string;
+  lines: NarrativeLine[];
+  generatedAt: string;
+}
+
+export type SelfVoiceType = 'critic' | 'comforter' | 'dreamer' | 'observer' | 'other';
+
+export interface SelfVoiceProfile {
+  voiceType: SelfVoiceType;
+  label: string;
+  description: string;
+  mentionCount: number;
+  dates: string[];
+  sampleQuotes: string[];
+  evidence: Evidence[];
+}
+
+export interface VoiceTimelinePoint {
+  date: string;
+  proportions: Record<string, number>;
+}
+
+export interface VoiceTransition {
+  fromVoice: string;
+  toVoice: string;
+  count: number;
+  description: string;
+}
+
+export interface StarLayoutPoint {
+  voiceType: string;
+  x: number;
+  y: number;
+}
+
+export interface SelfVoiceMap {
+  profiles: SelfVoiceProfile[];
+  timeline: VoiceTimelinePoint[];
+  transitions: VoiceTransition[];
+  starLayout: StarLayoutPoint[];
+}
+
+export interface ReframeCandidate {
+  id: string;
+  problemStatement: string;
+  internalizedPattern: string;
+  frequency: number;
+  exceptionMoments: Evidence[];
+  relatedAnchorIds: string[];
+}
+
+export interface ReframeMessage {
+  role: 'user' | 'guide';
+  text: string;
+  timestamp: string;
+}
+
+export interface ReframeSession {
+  id: string;
+  runId: string;
+  candidateId: string;
+  messages: ReframeMessage[];
+  originalNarrative: string;
+  alternativeStory?: string | null;
+}
+
+export interface StoryEdit {
+  status: NarrativeLineStatus;
+  userNote?: string;
 }

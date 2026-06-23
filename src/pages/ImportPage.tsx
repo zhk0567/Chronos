@@ -84,10 +84,12 @@ export default function ImportPage() {
 
   return (
     <div className="page">
-      <h2>日记导入</h2>
-      <p className="hint">
-        仅导入与分析 <strong>{currentYear}</strong> 年的日记。数据保存在本地 <code>data/entries/</code>
-      </p>
+      <header className="page-header">
+        <h2>日记导入</h2>
+        <p className="hint">
+          仅导入与分析 <strong>{currentYear}</strong> 年的日记。数据保存在本地 <code>data/entries/</code>
+        </p>
+      </header>
 
       <div className="card stats-card">
         <h3>当前数据（{summary.year} 年）</h3>

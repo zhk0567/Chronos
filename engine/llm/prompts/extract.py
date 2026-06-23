@@ -33,6 +33,32 @@ EXTRACT_USER = """日期：{date}
 
 请分析每个段落的形态并抽取信息单元。"""
 
+EXTRACT_BATCH_SYSTEM = """你是 Chronos 心理健康日记分析助手。批量分析多篇日记，输出严格 JSON。
+
+输出格式：
+{
+  "entries": [
+    {
+      "date": "YYYY-MM-DD",
+      "paragraphs": [
+        {
+          "paragraphIndex": 0,
+          "morphType": "narrative|introspective|sketch|list|mixed",
+          "confidence": 0.0-1.0,
+          "units": [ ... 同单篇格式 ... ]
+        }
+      ]
+    }
+  ]
+}
+
+规则同单篇分析：不虚构、缺失用 null、每篇按段落输出。"""
+
+EXTRACT_BATCH_USER = """以下 {count} 篇日记（每篇含 date 与 paragraphs）：
+{entries_json}
+
+请逐篇分析并输出 entries 数组。"""
+
 EMOTION_SYSTEM = """你是情绪分析助手。对日记进行情绪评分，输出 JSON：
 {
   "emotions": [

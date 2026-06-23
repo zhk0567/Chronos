@@ -4,7 +4,7 @@ import uuid
 from typing import Callable, Optional
 
 from llm.ollama_client import OllamaClient
-from llm.prompts.extract import EXTRACT_SYSTEM, EXTRACT_USER
+from llm.prompts.extract import EXTRACT_SYSTEM, EXTRACT_USER, EXTRACT_BATCH_SYSTEM, EXTRACT_BATCH_USER
 from schemas.models import (
     DiaryEntry,
     DiaryParagraph,
@@ -50,42 +50,86 @@ def extract_morph_and_units(
     llm: OllamaClient,
     use_llm: bool = True,
 ) -> tuple[list[MorphResult], list[InfoUnit]]:
-    entry = ensure_paragraphs(entry)
+    morphs, units = extract_all_morph_and_units([entry], llm, use_llm, batch_size=1)
+    return morphs, units
+
+
+def extract_all_morph_and_units(
+    entries: list[DiaryEntry],
+    llm: OllamaClient,
+    use_llm: bool = True,
+    batch_size: int = 12,
+    on_batch: Optional[Callable[[int, int], None]] = None,
+) -> tuple[list[MorphResult], list[InfoUnit]]:
+    """Batch LLM extract to avoid N sequential API calls."""
+    all_morphs: list[MorphResult] = []
+    all_units: list[InfoUnit] = []
+    prepared = [ensure_paragraphs(e) for e in entries]
+    total_batches = (len(prepared) + batch_size - 1) // batch_size if prepared else 0
+
+    for batch_idx, start in enumerate(range(0, len(prepared), batch_size)):
+        batch = prepared[start : start + batch_size]
+        if on_batch:
+            on_batch(batch_idx + 1, total_batches)
+
+        if use_llm and batch:
+            try:
+                payload = []
+                for entry in batch:
+                    payload.append({
+                        "date": entry.date,
+                        "paragraphs": [{"index": p.index, "text": p.text[:250]} for p in entry.paragraphs],
+                    })
+                user = EXTRACT_BATCH_USER.format(
+                    count=len(batch),
+                    entries_json=__import__("json").dumps(payload, ensure_ascii=False),
+                )
+                data = llm.chat_json(EXTRACT_BATCH_SYSTEM, user)
+                parsed = _parse_batch_response(data, batch)
+                if parsed:
+                    m, u = parsed
+                    all_morphs.extend(m)
+                    all_units.extend(u)
+                    continue
+            except Exception:
+                pass
+
+        for entry in batch:
+            m, u = _heuristic_extract(entry)
+            all_morphs.extend(m)
+            all_units.extend(u)
+
+    return all_morphs, all_units
+
+
+def _parse_batch_response(
+    data: dict,
+    batch: list[DiaryEntry],
+) -> Optional[tuple[list[MorphResult], list[InfoUnit]]]:
+    by_date = {e.date: e for e in batch}
     morphs: list[MorphResult] = []
     units: list[InfoUnit] = []
 
-    if use_llm and entry.paragraphs:
-        try:
-            para_json = [{"index": p.index, "text": p.text} for p in entry.paragraphs]
-            user = EXTRACT_USER.format(
-                date=entry.date,
-                paragraphs_json=__import__("json").dumps(para_json, ensure_ascii=False),
-            )
-            data = llm.chat_json(EXTRACT_SYSTEM, user)
-            for para in data.get("paragraphs", []):
-                pidx = para.get("paragraphIndex", 0)
-                mtype = _parse_morph(para.get("morphType", "mixed"))
-                conf = float(para.get("confidence", 0.7))
-                morphs.append(
-                    MorphResult(
-                        date=entry.date,
-                        paragraphIndex=pidx,
-                        type=mtype,
-                        confidence=conf,
-                    )
-                )
-                para_text = next((p.text for p in entry.paragraphs if p.index == pidx), "")
-                para_offset = next((p.char_offset for p in entry.paragraphs if p.index == pidx), 0)
-                for u in para.get("units", []):
-                    unit = _build_unit(entry.date, pidx, para_text, para_offset, mtype, u)
-                    if unit:
-                        units.append(unit)
-            if morphs:
-                return morphs, units
-        except Exception:
-            pass
+    for entry_data in data.get("entries", []):
+        date = entry_data.get("date", "")
+        entry = by_date.get(date)
+        if not entry:
+            continue
+        for para in entry_data.get("paragraphs", []):
+            pidx = para.get("paragraphIndex", 0)
+            mtype = _parse_morph(para.get("morphType", "mixed"))
+            conf = float(para.get("confidence", 0.7))
+            morphs.append(MorphResult(date=date, paragraphIndex=pidx, type=mtype, confidence=conf))
+            para_text = next((p.text for p in entry.paragraphs if p.index == pidx), "")
+            para_offset = next((p.char_offset for p in entry.paragraphs if p.index == pidx), 0)
+            for u in para.get("units", []):
+                unit = _build_unit(date, pidx, para_text, para_offset, mtype, u)
+                if unit:
+                    units.append(unit)
 
-    return _heuristic_extract(entry)
+    if not morphs:
+        return None
+    return morphs, units
 
 
 def _parse_morph(raw: str) -> MorphType:

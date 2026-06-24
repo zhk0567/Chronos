@@ -24,6 +24,19 @@ VOICE_KEYWORDS: dict[str, tuple[str, list[str]]] = {
     "observer": ("观察者", ["注意到", "发现", "看来", "也许", "思考", "观察", "意识到"]),
 }
 
+CLUSTER_MIN_UNITS = 8
+
+
+def _unit_text(unit: InfoUnit) -> str:
+    ta = unit.thought_anchor
+    parts = [
+        ta.self_voice if ta else None,
+        ta.cognitive_pattern if ta else None,
+        ta.core_concern if ta else None,
+        unit.source_span.text if unit.source_span else None,
+    ]
+    return " ".join(filter(None, parts))
+
 
 def _classify_voice(text: str) -> str:
     if not text:
@@ -35,6 +48,45 @@ def _classify_voice(text: str) -> str:
     return best if scores[best] > 0 else "other"
 
 
+def _label_cluster(texts: list[str]) -> str:
+    combined = " ".join(texts)
+    return _classify_voice(combined)
+
+
+def _cluster_voice_types(units: list[InfoUnit]) -> dict[str, str]:
+    """TF-IDF + KMeans 聚类；样本不足时回退关键词分类。"""
+    if len(units) < CLUSTER_MIN_UNITS:
+        return {u.id: _classify_voice(_unit_text(u)) for u in units}
+
+    try:
+        import jieba
+        from sklearn.cluster import KMeans
+        from sklearn.feature_extraction.text import TfidfVectorizer
+    except ImportError:
+        return {u.id: _classify_voice(_unit_text(u)) for u in units}
+
+    texts = [_unit_text(u) for u in units]
+    stopwords = {"的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都", "一", "自己", "这"}
+
+    def tokenizer(text: str) -> list[str]:
+        return [w for w in jieba.cut(text) if len(w) >= 2 and w not in stopwords]
+
+    vectorizer = TfidfVectorizer(tokenizer=tokenizer, max_features=300, min_df=1)
+    matrix = vectorizer.fit_transform(texts)
+    if matrix.shape[0] < 2:
+        return {u.id: _classify_voice(_unit_text(u)) for u in units}
+
+    n_clusters = min(4, max(2, len(units) // 4))
+    labels = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit_predict(matrix)
+
+    cluster_to_voice: dict[int, str] = {}
+    for cid in range(n_clusters):
+        cluster_texts = [texts[i] for i in range(len(texts)) if labels[i] == cid]
+        cluster_to_voice[cid] = _label_cluster(cluster_texts)
+
+    return {units[i].id: cluster_to_voice[labels[i]] for i in range(len(units))}
+
+
 def analyze_selves(
     units: list[InfoUnit],
     emotion_series: list[EmotionPoint],
@@ -43,22 +95,12 @@ def analyze_selves(
     if not thought_units:
         return SelfVoiceMap()
 
+    voice_by_unit = _cluster_voice_types(thought_units)
     by_voice: dict[str, list[InfoUnit]] = defaultdict(list)
     by_date_voice: dict[str, Counter] = defaultdict(Counter)
 
     for unit in thought_units:
-        ta = unit.thought_anchor
-        text = " ".join(
-            filter(
-                None,
-                [
-                    ta.self_voice if ta else None,
-                    ta.cognitive_pattern if ta else None,
-                    ta.core_concern if ta else None,
-                ],
-            )
-        )
-        vtype = _classify_voice(text)
+        vtype = voice_by_unit.get(unit.id, "other")
         by_voice[vtype].append(unit)
         by_date_voice[unit.date][vtype] += 1
 
@@ -72,11 +114,12 @@ def analyze_selves(
             elif u.source_span.text:
                 quotes.append(u.source_span.text[:100])
 
+        method = "cluster" if len(thought_units) >= CLUSTER_MIN_UNITS else "keyword"
         profiles.append(
             SelfVoiceProfile(
                 voiceType=vtype,
                 label=label,
-                description=f"在 {len(vunits)} 处内省记录中出现",
+                description=f"在 {len(vunits)} 处内省记录中出现（{method}）",
                 mentionCount=len(vunits),
                 dates=sorted({u.date for u in vunits}),
                 sampleQuotes=quotes,

@@ -220,6 +220,20 @@ def _classify_heuristic(text: str) -> tuple[MorphType, float]:
     return MorphType.MIXED, 0.4
 
 
+def _extract_participants(text: str) -> list[str]:
+    names = ["妈妈", "爸爸", "朋友", "同事", "老板", "老师", "老公", "老婆", "团队"]
+    found = [n for n in names if n in text]
+    return found if found else []
+
+
+def _topic_concern(text: str) -> str | None:
+    topics = ["工作", "项目", "旅行", "学习", "健康", "家庭", "感情", "考试"]
+    for topic in topics:
+        if topic in text:
+            return topic
+    return None
+
+
 def _heuristic_unit(date: str, para: DiaryParagraph, mtype: MorphType) -> InfoUnit:
     span = SourceSpan(
         date=date,
@@ -237,7 +251,10 @@ def _heuristic_unit(date: str, para: DiaryParagraph, mtype: MorphType) -> InfoUn
             unitType=InfoUnitType.EVENT_PACKAGE,
             morphType=mtype,
             sourceSpan=span,
-            eventPackage=EventPackage(summary=para.text[:100]),
+            eventPackage=EventPackage(
+                summary=para.text[:100],
+                participants=_extract_participants(para.text) or None,
+            ),
         )
     if mtype == MorphType.INTROSPECTIVE:
         return InfoUnit(
@@ -257,6 +274,29 @@ def _heuristic_unit(date: str, para: DiaryParagraph, mtype: MorphType) -> InfoUn
             morphType=mtype,
             sourceSpan=span,
             rhythmInfo=RhythmInfo(items=items[:10]),
+        )
+    participants = _extract_participants(para.text)
+    if participants:
+        return InfoUnit(
+            id=uid,
+            date=date,
+            unitType=InfoUnitType.EVENT_PACKAGE,
+            morphType=mtype,
+            sourceSpan=span,
+            eventPackage=EventPackage(
+                summary=para.text[:100],
+                participants=participants,
+            ),
+        )
+    concern = _topic_concern(para.text)
+    if concern:
+        return InfoUnit(
+            id=uid,
+            date=date,
+            unitType=InfoUnitType.THOUGHT_ANCHOR,
+            morphType=mtype,
+            sourceSpan=span,
+            thoughtAnchor=ThoughtAnchor(coreConcern=concern),
         )
     return InfoUnit(
         id=uid,

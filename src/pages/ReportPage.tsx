@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { AnalysisRunSummary, InsightReport } from '../types/analysis';
+import { confidenceLabel } from '../utils/confidence';
+import { completenessLabel } from '../utils/completenessLabels';
+import { anchorTypeLabel } from '../utils/anchorLabels';
 import { resolveRunId } from '../utils/runSelection';
 import ReportSectionView from '../components/report/ReportSectionView';
+import ReportOverview from '../components/report/ReportOverview';
 import EvidencePanel from '../components/report/EvidencePanel';
 
 export default function ReportPage() {
@@ -24,8 +28,7 @@ export default function ReportPage() {
 
   const loadReport = useCallback(async (runId: string) => {
     setLoading(true);
-    const r = await window.chronosAPI.getReport(runId);
-    setReport(r);
+    setReport(await window.chronosAPI.getReport(runId));
     setLoading(false);
   }, []);
 
@@ -47,6 +50,11 @@ export default function ReportPage() {
     if (!selectedRunId) return;
     const json = await window.chronosAPI.exportReportJson(selectedRunId);
     if (json) await window.chronosAPI.saveExport(json, `chronos-report-${selectedRunId}.json`);
+  };
+
+  const openAnchorsTab = () => {
+    if (!report) return;
+    setActiveTab(report.sections.length);
   };
 
   if (!report && loading) {
@@ -72,6 +80,7 @@ export default function ReportPage() {
   }
 
   const tabs = report.sections;
+  const anchorTabIndex = tabs.length;
 
   return (
     <div className="page report-page">
@@ -103,14 +112,16 @@ export default function ReportPage() {
         </div>
       </header>
 
+      <ReportOverview report={report} onOpenAnchors={openAnchorsTab} />
+
       {Object.keys(report.dataCompleteness).length > 0 && (
         <div className="card completeness-bar">
-          <h3>数据完整性</h3>
+          <h3>数据覆盖</h3>
           <ul className="completeness-list">
             {Object.entries(report.dataCompleteness).map(([k, v]) => (
               <li key={k} className="completeness-item">
                 <div className="completeness-label">
-                  <span>{k}</span>
+                  <span>{completenessLabel(k)}</span>
                   <span>{Math.round(v * 100)}%</span>
                 </div>
                 <div className="completeness-track">
@@ -135,15 +146,15 @@ export default function ReportPage() {
         ))}
         <button
           type="button"
-          className={activeTab === tabs.length ? 'active' : ''}
-          onClick={() => setActiveTab(tabs.length)}
+          className={activeTab === anchorTabIndex ? 'active' : ''}
+          onClick={() => setActiveTab(anchorTabIndex)}
         >
           锚点 ({report.anchors.length})
         </button>
       </div>
 
       {activeTab < tabs.length ? (
-        <ReportSectionView section={tabs[activeTab]} />
+        <ReportSectionView section={tabs[activeTab]} report={report} />
       ) : (
         <div className="anchors-panel">
           {report.anchors.length === 0 ? (
@@ -152,12 +163,14 @@ export default function ReportPage() {
             report.anchors.map((anchor) => (
               <div key={anchor.id} className="anchor-card">
                 <div className="anchor-meta">
-                  <span className="anchor-type">{anchor.emergenceType}</span>
+                  <span className="anchor-type">{anchorTypeLabel(anchor.emergenceType)}</span>
                   <span className="anchor-date">{anchor.date}</span>
                 </div>
                 <h4>{anchor.title}</h4>
                 <p>{anchor.description}</p>
-                <p className="confidence">置信度 {Math.round(anchor.confidence * 100)}%</p>
+                <p className="confidence">
+                  置信度 {Math.round(anchor.confidence * 100)}%（{confidenceLabel(anchor.confidence)}）
+                </p>
                 <EvidencePanel evidence={anchor.evidence} />
               </div>
             ))

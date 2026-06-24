@@ -3,6 +3,8 @@ import path from 'path';
 import type {
   AnalysisProgress,
   AnalysisRunSummary,
+  BenchmarkResult,
+  BenchmarkSuiteResult,
   DiaryEntry,
   InsightReport,
   LifeStoryBook,
@@ -14,6 +16,9 @@ import type { PythonManager } from './pythonManager';
 import { getSettings } from './settingsStore';
 
 export class AnalysisBridge {
+  private activeRunId: string | null = null;
+  private abortController: AbortController | null = null;
+
   constructor(
     private readonly python: PythonManager,
     private readonly appRoot: string
@@ -72,9 +77,13 @@ export class AnalysisBridge {
   async startAnalysis(
     entries: DiaryEntry[],
     model: string,
-    onProgress?: (p: AnalysisProgress) => void
+    onProgress?: (p: AnalysisProgress) => void,
+    resumeRunId?: string | null
   ): Promise<InsightReport> {
-    const runId = `run_${Date.now()}`;
+    const runId = resumeRunId ?? `run_${Date.now()}`;
+    const resume = Boolean(resumeRunId);
+    this.activeRunId = runId;
+    this.abortController = new AbortController();
 
     const runOnce = async (): Promise<InsightReport> => {
       await this.python.ensureReady();
@@ -83,8 +92,11 @@ export class AnalysisBridge {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ runId, entries, model }),
-        signal: AbortSignal.timeout(30 * 60 * 1000),
+        body: JSON.stringify({ runId, entries, model, resume }),
+        signal: AbortSignal.any([
+          AbortSignal.timeout(30 * 60 * 1000),
+          this.abortController!.signal,
+        ]),
       });
 
       if (!res.ok) {
@@ -118,6 +130,9 @@ export class AnalysisBridge {
           } else if (payload.type === 'complete') {
             report = payload.data;
           } else if (payload.type === 'error') {
+            if (payload.data.cancelled) {
+              throw new Error('分析已取消');
+            }
             throw new Error(payload.data.message);
           }
         }
@@ -131,6 +146,9 @@ export class AnalysisBridge {
       return await runOnce();
     } catch (err) {
       const msg = String(err);
+      if (msg.includes('分析已取消') || msg.includes('aborted')) {
+        throw new Error('分析已取消');
+      }
       const retryable =
         msg.includes('ECONNRESET') ||
         msg.includes('terminated') ||
@@ -142,6 +160,53 @@ export class AnalysisBridge {
       await this.python.stop();
       await this.python.ensureReady();
       return runOnce();
+    } finally {
+      this.activeRunId = null;
+      this.abortController = null;
+    }
+  }
+
+  async cancelAnalysis(): Promise<boolean> {
+    const runId = this.activeRunId;
+    this.abortController?.abort();
+    if (!runId) return false;
+    try {
+      await this.python.ensureReady();
+      const res = await fetch(`${this.python.baseUrl}/analyze/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ runId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async runBenchmark(): Promise<BenchmarkSuiteResult> {
+    await this.python.ensureReady();
+    const res = await fetch(`${this.python.baseUrl}/benchmark/all`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<BenchmarkSuiteResult>;
+  }
+
+  getLastBenchmark(): BenchmarkResult | null {
+    const fp = path.join(this.appRoot, 'data', 'benchmark', 'last_result.json');
+    if (!fs.existsSync(fp)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(fp, 'utf-8')) as BenchmarkResult;
+    } catch {
+      return null;
+    }
+  }
+
+  getLastBenchmarkSuite(): BenchmarkSuiteResult | null {
+    const fp = path.join(this.appRoot, 'data', 'benchmark', 'last_suite.json');
+    if (!fs.existsSync(fp)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(fp, 'utf-8')) as BenchmarkSuiteResult;
+    } catch {
+      return null;
     }
   }
 

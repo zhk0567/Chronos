@@ -90,14 +90,58 @@ contextBridge.exposeInMainWorld('chronosAPI', {
   getDefaultRunId: (): Promise<string | null> => ipcRenderer.invoke('chronos:getDefaultRunId'),
   getReport: (runId: string): Promise<InsightReport | null> =>
     ipcRenderer.invoke('chronos:getReport', runId),
-  startAnalysis: (model: string): Promise<InsightReport> =>
-    ipcRenderer.invoke('chronos:startAnalysis', model),
+  startAnalysis: (model: string, resumeRunId?: string | null): Promise<InsightReport> =>
+    ipcRenderer.invoke('chronos:startAnalysis', model, resumeRunId ?? null),
+  cancelAnalysis: (): Promise<boolean> => ipcRenderer.invoke('chronos:cancelAnalysis'),
+
+  getFeedback: (runId: string): Promise<import('../src/types/analysis').RunFeedback> =>
+    ipcRenderer.invoke('chronos:getFeedback', runId),
+  setFeedback: (
+    runId: string,
+    targetType: 'conclusion' | 'anchor',
+    targetId: string,
+    rating: 'up' | 'down' | null
+  ): Promise<import('../src/types/analysis').RunFeedback> =>
+    ipcRenderer.invoke('chronos:setFeedback', runId, targetType, targetId, rating),
+
+  runBenchmark: (): Promise<import('../src/types/analysis').BenchmarkSuiteResult> =>
+    ipcRenderer.invoke('chronos:runBenchmark'),
+  getLastBenchmark: (): Promise<import('../src/types/analysis').BenchmarkResult | null> =>
+    ipcRenderer.invoke('chronos:getLastBenchmark'),
+  getLastBenchmarkSuite: (): Promise<import('../src/types/analysis').BenchmarkSuiteResult | null> =>
+    ipcRenderer.invoke('chronos:getLastBenchmarkSuite'),
+
+  getFeedbackSummary: (): Promise<import('../src/types/analysis').FeedbackSummary> =>
+    ipcRenderer.invoke('chronos:getFeedbackSummary'),
+  exportFeedbackJson: (): Promise<string> => ipcRenderer.invoke('chronos:exportFeedbackJson'),
   exportReportHtml: (runId: string): Promise<string | null> =>
     ipcRenderer.invoke('chronos:exportReportHtml', runId),
   exportReportJson: (runId: string): Promise<string | null> =>
     ipcRenderer.invoke('chronos:exportReportJson', runId),
   saveExport: (content: string, defaultName: string): Promise<boolean> =>
     ipcRenderer.invoke('chronos:saveExport', content, defaultName),
+
+  getDataInventory: (): Promise<{ entries: number; analysisRuns: number; contextFiles: number }> =>
+    ipcRenderer.invoke('chronos:getDataInventory'),
+  deleteAllUserData: (): Promise<{
+    ok: boolean;
+    deleted: { entries: number; analysisRuns: number; contextFiles: number; narrativeFiles: number };
+  }> => ipcRenderer.invoke('chronos:deleteAllUserData'),
+  deleteDiaryEntries: (options?: {
+    preserveAnonymizedAnalysis?: boolean;
+  }): Promise<{
+    ok: boolean;
+    deleted: {
+      entries: number;
+      runsAnonymized: number;
+      filesDeleted: number;
+      filesRedacted: number;
+      narrativeFiles: number;
+    };
+    preserveAnonymizedAnalysis: boolean;
+  }> => ipcRenderer.invoke('chronos:deleteDiaryEntries', options),
+  deleteAnalysisRun: (runId: string): Promise<{ ok: boolean; deleted: boolean }> =>
+    ipcRenderer.invoke('chronos:deleteAnalysisRun', runId),
 
   onAnalysisProgress: (callback: (progress: AnalysisProgress) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: AnalysisProgress) =>

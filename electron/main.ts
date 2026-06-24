@@ -2,6 +2,13 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import {
+  deleteAllUserData,
+  deleteAnalysisRun,
+  deleteDiaryEntries,
+  getDataInventory,
+} from './dataStore';
+import { exportAllFeedbackJson, getRunFeedback, setFeedbackItem, summarizeAllFeedback } from './feedbackStore';
+import {
   getDataRoot,
   getEntrySummary,
   importFromEcho,
@@ -55,7 +62,7 @@ function getAppRoot(): string {
 }
 
 function ensureDataDirs(root: string) {
-  for (const sub of ['entries', 'analysis', 'reports', 'imports', 'context/weather', 'context/wearable', 'context/digital', 'context/location', 'story/edits', 'reframe/sessions']) {
+  for (const sub of ['entries', 'analysis', 'reports', 'imports', 'context/weather', 'context/wearable', 'context/digital', 'context/location', 'story/edits', 'reframe/sessions', 'feedback', 'benchmark']) {
     const dir = path.join(root, 'data', sub);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
@@ -89,6 +96,20 @@ function createWindow() {
 function registerIpc() {
   ipcMain.handle('chronos:getAppRoot', () => appRoot);
   ipcMain.handle('chronos:getDataRoot', () => getDataRoot(appRoot));
+
+  ipcMain.handle('chronos:getDataInventory', () => getDataInventory(appRoot));
+
+  ipcMain.handle('chronos:deleteAllUserData', () => deleteAllUserData(appRoot));
+
+  ipcMain.handle(
+    'chronos:deleteDiaryEntries',
+    (_e, options?: { preserveAnonymizedAnalysis?: boolean }) =>
+      deleteDiaryEntries(appRoot, options ?? {})
+  );
+
+  ipcMain.handle('chronos:deleteAnalysisRun', (_e, runId: string) =>
+    deleteAnalysisRun(appRoot, runId)
+  );
 
   ipcMain.handle('chronos:listEntries', () => listEntries(appRoot));
   ipcMain.handle('chronos:getEntrySummary', () => getEntrySummary(appRoot));
@@ -209,17 +230,37 @@ function registerIpc() {
     return result.canceled ? null : result.filePaths[0];
   });
 
-  ipcMain.handle('chronos:startAnalysis', async (event, model: string) => {
+  ipcMain.handle('chronos:startAnalysis', async (event, model: string, resumeRunId?: string | null) => {
     const entries = listEntries(appRoot);
     if (entries.length === 0) {
       throw new Error(`没有 ${new Date().getFullYear()} 年的日记可分析，请先导入或同步`);
     }
 
     const webContents = event.sender;
-    return analysisBridge!.startAnalysis(entries, model, (progress) => {
-      webContents.send('chronos:analysisProgress', progress);
-    });
+    return analysisBridge!.startAnalysis(
+      entries,
+      model,
+      (progress) => {
+        webContents.send('chronos:analysisProgress', progress);
+      },
+      resumeRunId ?? undefined
+    );
   });
+
+  ipcMain.handle('chronos:cancelAnalysis', () => analysisBridge!.cancelAnalysis());
+
+  ipcMain.handle('chronos:getFeedback', (_e, runId: string) => getRunFeedback(appRoot, runId));
+  ipcMain.handle(
+    'chronos:setFeedback',
+    (_e, runId: string, targetType: 'conclusion' | 'anchor', targetId: string, rating: 'up' | 'down' | null) =>
+      setFeedbackItem(appRoot, runId, targetType, targetId, rating)
+  );
+
+  ipcMain.handle('chronos:runBenchmark', () => analysisBridge!.runBenchmark());
+  ipcMain.handle('chronos:getLastBenchmark', () => analysisBridge!.getLastBenchmark());
+  ipcMain.handle('chronos:getLastBenchmarkSuite', () => analysisBridge!.getLastBenchmarkSuite());
+  ipcMain.handle('chronos:getFeedbackSummary', () => summarizeAllFeedback(appRoot));
+  ipcMain.handle('chronos:exportFeedbackJson', () => exportAllFeedbackJson(appRoot));
 
   ipcMain.handle('chronos:getStoryBook', (_e, runId: string) => getStoryBook(appRoot, runId));
   ipcMain.handle('chronos:getSelfVoiceMap', (_e, runId: string) => getSelfVoiceMap(appRoot, runId));

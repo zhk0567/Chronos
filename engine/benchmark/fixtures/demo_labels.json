@@ -1,0 +1,27 @@
+{
+  "name": "demo_v1",
+  "description": "11 篇合成日记（启发式流水线），锚点/主题/关系冒烟测试",
+  "anchors": [
+    {
+      "emergenceType": "intensity",
+      "date": "2026-01-10",
+      "titleContains": "低谷"
+    },
+    {
+      "emergenceType": "structure",
+      "titleContains": "形态"
+    }
+  ],
+  "themes": [
+    {
+      "keyword": "工作",
+      "minMentions": 3
+    }
+  ],
+  "relationships": [
+    {
+      "nameContains": "妈妈",
+      "minMentions": 2
+    }
+  ]
+}

@@ -19,6 +19,8 @@ def detect_warning_patterns(
     dates = [p.date for p in emotion_series]
     zscores = rolling_zscore(scores, window=7)
     ctx_by_date = {c.date: c for c in contexts}
+    wearable_cov = _wearable_coverage(contexts)
+    digital_cov = _digital_coverage(contexts)
 
     drop_indices = [i for i, z in enumerate(zscores) if z < -1.5]
     if len(drop_indices) < 1:
@@ -36,7 +38,7 @@ def detect_warning_patterns(
             ctx = ctx_by_date.get(pre_date)
             if not ctx:
                 continue
-            signals = _collect_signals(ctx)
+            signals = _collect_signals(ctx, wearable_cov, digital_cov)
             if signals:
                 key = "+".join(sorted(signals))
                 signal_counts[key] += 1
@@ -62,13 +64,17 @@ def detect_warning_patterns(
     return patterns
 
 
-def _collect_signals(ctx: DailyContext) -> list[str]:
+def _collect_signals(
+    ctx: DailyContext,
+    wearable_cov: float = 0.0,
+    digital_cov: float = 0.0,
+) -> list[str]:
     signals: list[str] = []
     if ctx.weather and (ctx.weather.precipitation or 0) > 2:
         signals.append("雨天")
-    if ctx.wearable and ctx.wearable.sleep_hours is not None and ctx.wearable.sleep_hours < 6:
+    if wearable_cov >= 0.15 and ctx.wearable and ctx.wearable.sleep_hours is not None and ctx.wearable.sleep_hours < 6:
         signals.append("睡眠不足")
-    if ctx.digital and ctx.digital.screen_time_min and ctx.digital.screen_time_min > 300:
+    if digital_cov >= 0.15 and ctx.digital and ctx.digital.screen_time_min and ctx.digital.screen_time_min > 300:
         signals.append("屏幕时间过长")
     if ctx.rhythm:
         if ctx.rhythm.weekday >= 5:
@@ -76,3 +82,21 @@ def _collect_signals(ctx: DailyContext) -> list[str]:
         if ctx.rhythm.holiday:
             signals.append("节假日前")
     return signals
+
+
+def _wearable_coverage(contexts: list[DailyContext]) -> float:
+    if not contexts:
+        return 0.0
+    n = sum(
+        1
+        for c in contexts
+        if c.wearable and (c.wearable.sleep_hours is not None or c.wearable.steps is not None)
+    )
+    return n / len(contexts)
+
+
+def _digital_coverage(contexts: list[DailyContext]) -> float:
+    if not contexts:
+        return 0.0
+    n = sum(1 for c in contexts if c.digital and c.digital.screen_time_min is not None)
+    return n / len(contexts)

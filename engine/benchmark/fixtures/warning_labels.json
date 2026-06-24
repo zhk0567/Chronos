@@ -1,0 +1,12 @@
+{
+  "name": "warning_v1",
+  "description": "20 篇合成日记 + 语境，验证雨天前低谷预警",
+  "anchors": [],
+  "themes": [],
+  "relationships": [],
+  "warnings": [
+    {
+      "signalsContains": ["雨天"]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ export interface UserSettings {
   longitude: number | null;
   timezone: string;
   defaultRunId?: string | null;
+  theme?: 'light' | 'dark' | 'system';
 }
 
 const DEFAULTS: UserSettings = {
@@ -15,6 +16,7 @@ const DEFAULTS: UserSettings = {
   longitude: 112.454,
   timezone: 'Asia/Shanghai',
   defaultRunId: null,
+  theme: 'light',
 };
 
 const CITY_COORDS: Record<string, [number, number]> = {

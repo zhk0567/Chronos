@@ -38,10 +38,14 @@ export interface AnalysisRunSummary {
   runId: string;
   startedAt: string;
   completedAt?: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'paused' | 'cancelled';
   entryCount: number;
   error?: string;
+  lastCompletedStep?: string | null;
+  resumedFromStep?: string | null;
 }
+
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export type EvidenceSource = 'explicit' | 'inferred';
 
@@ -200,12 +204,69 @@ export interface ReportSection {
   conclusions: ReportConclusion[];
 }
 
+export interface FeedbackItem {
+  targetType: 'conclusion' | 'anchor';
+  targetId: string;
+  rating: 'up' | 'down';
+  note?: string;
+  updatedAt: string;
+}
+
+export interface RunFeedback {
+  runId: string;
+  updatedAt: string;
+  items: Record<string, FeedbackItem>;
+}
+
+export interface BenchmarkMetric {
+  precision: number;
+  recall: number;
+  f1: number;
+  tp: number;
+  fp: number;
+  fn: number;
+}
+
+export interface FeedbackSummary {
+  total: number;
+  up: number;
+  down: number;
+  byRun: Record<string, { up: number; down: number }>;
+}
+
+export interface BenchmarkSuiteResult {
+  ranAt: string;
+  fixtures: BenchmarkResult[];
+}
+
+export interface BenchmarkResult {
+  name: string;
+  entryCount: number;
+  ranAt: string;
+  anchor: BenchmarkMetric;
+  theme: BenchmarkMetric;
+  relationship: BenchmarkMetric;
+  warning?: BenchmarkMetric;
+  details: Record<string, unknown>;
+}
+
 export interface ReportConclusion {
   id: string;
   statement: string;
   confidence: number;
   limitation?: string | null;
   evidence: Evidence[];
+  implication?: string | null;
+}
+
+export interface WeatherInsight {
+  id: string;
+  type: string;
+  title: string;
+  statement: string;
+  confidence: number;
+  evidence: Evidence[];
+  chartData?: { labels?: string[]; values?: number[] };
 }
 
 export interface InsightReport {
@@ -234,6 +295,8 @@ export interface InsightReport {
   lifeStory?: LifeStoryBook | null;
   selfVoiceMap?: SelfVoiceMap | null;
   reframeCandidates?: ReframeCandidate[];
+  weatherInsights?: WeatherInsight[];
+  executiveSummary?: string[];
 }
 
 export interface AnalysisProgress {
@@ -258,6 +321,7 @@ export interface UserSettings {
   longitude: number | null;
   timezone: string;
   defaultRunId?: string | null;
+  theme?: ThemeMode;
 }
 
 export interface ContextCompleteness {

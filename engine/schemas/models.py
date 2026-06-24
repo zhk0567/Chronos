@@ -246,6 +246,7 @@ class ReportConclusion(BaseModel):
     confidence: float
     limitation: Optional[str] = None
     evidence: list[Evidence] = Field(default_factory=list)
+    implication: Optional[str] = None
 
 
 class ReportSection(BaseModel):
@@ -286,6 +287,8 @@ class InsightReport(BaseModel):
     reframe_candidates: list["ReframeCandidate"] = Field(
         default_factory=list, alias="reframeCandidates"
     )
+    weather_insights: list[WeatherInsight] = Field(default_factory=list, alias="weatherInsights")
+    executive_summary: list[str] = Field(default_factory=list, alias="executiveSummary")
 
     model_config = {"populate_by_name": True}
 
@@ -293,7 +296,8 @@ class InsightReport(BaseModel):
 class AnalysisRequest(BaseModel):
     run_id: str = Field(alias="runId")
     entries: list[DiaryEntry]
-    model: str = "minimax-m3:cloud"
+    model: str = "gemma3:4b"
+    resume: bool = False
 
     model_config = {"populate_by_name": True}
 
@@ -381,6 +385,18 @@ class WeatherSensitivity(BaseModel):
     confidence: float
     description: str
     evidence: list[Evidence] = Field(default_factory=list)
+
+
+class WeatherInsight(BaseModel):
+    id: str
+    type: str
+    title: str
+    statement: str
+    confidence: float
+    evidence: list[Evidence] = Field(default_factory=list)
+    chart_data: dict = Field(default_factory=dict, alias="chartData")
+
+    model_config = {"populate_by_name": True}
 
 
 class SpaceEmotionLink(BaseModel):

@@ -3,7 +3,7 @@ import type { ColumnMapping, ContextImportResult, CsvPreview } from '../types/an
 
 type ImportType = 'apple_health' | 'wearable_csv' | 'screen_time' | 'gpx' | 'manual_location';
 
-const IMPORT_OPTIONS: { type: ImportType; label: string; hint: string; needsMapping?: boolean }[] = [
+const ADVANCED_IMPORT_OPTIONS: { type: ImportType; label: string; hint: string; needsMapping?: boolean }[] = [
   { type: 'apple_health', label: 'Apple Health (export.xml)', hint: '步数、睡眠时长、静息心率' },
   { type: 'wearable_csv', label: '可穿戴 CSV', hint: '支持自定义列映射', needsMapping: true },
   { type: 'screen_time', label: '屏幕时间 CSV', hint: '支持自定义列映射', needsMapping: true },
@@ -53,6 +53,7 @@ export default function DataSourcesPage() {
   const [lastImport, setLastImport] = useState<ContextImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [mappingOpen, setMappingOpen] = useState(false);
   const [pendingType, setPendingType] = useState<ImportType | null>(null);
@@ -139,67 +140,81 @@ export default function DataSourcesPage() {
     <div className="page">
       <header className="page-header">
         <h2>数据源</h2>
-        <p className="hint">可选导入多源语境数据。缺失数据不插补，分析时会如实标注。</p>
+        <p className="hint">
+          Chronos 以<strong>日记</strong>为核心；天气在「设置」中配置常驻城市后，分析时自动拉取。
+          下方扩展数据源一般无需导入。
+        </p>
       </header>
 
       <div className="card stats-card">
-        <h3>已缓存数据（按日 JSON）</h3>
-        <ul className="completeness-list">
-          <li>天气：{sources.weather ?? 0} 天</li>
-          <li>可穿戴：{sources.wearable ?? 0} 天</li>
-          <li>数字行为：{sources.digital ?? 0} 天</li>
-          <li>位置：{sources.location ?? 0} 天</li>
-        </ul>
-      </div>
-
-      <div className="import-grid">
-        {IMPORT_OPTIONS.map((opt) => (
-          <div key={opt.type} className="card import-option">
-            <h4>{opt.label}</h4>
-            <p className="meta">{opt.hint}</p>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => handleImport(opt.type, opt.needsMapping)}
-            >
-              选择文件导入
-            </button>
-          </div>
-        ))}
+        <h3>已缓存天气数据</h3>
+        <p className="meta">天气：{sources.weather ?? 0} 天（相对日记日期范围统计见设置页）</p>
+        {(sources.wearable ?? 0) + (sources.digital ?? 0) + (sources.location ?? 0) > 0 && (
+          <p className="meta">
+            扩展数据：可穿戴 {sources.wearable ?? 0} 天 · 数字行为 {sources.digital ?? 0} 天 · 位置{' '}
+            {sources.location ?? 0} 天
+          </p>
+        )}
       </div>
 
       <div className="card">
-        <h3>手动录入地点</h3>
-        <p className="meta">无需 JSON 文件，直接写入 location 缓存</p>
-        <div className="form-grid">
-          <label className="field">
-            日期
-            <input type="date" value={locDate} onChange={(e) => setLocDate(e.target.value)} />
-          </label>
-          <label className="field">
-            地点名称
-            <input
-              type="text"
-              value={locPlace}
-              onChange={(e) => setLocPlace(e.target.value)}
-              placeholder="例如：公司、家、咖啡厅"
-            />
-          </label>
-          <label className="field">
-            类型
-            <select value={locType} onChange={(e) => setLocType(e.target.value)}>
-              <option value="home">home</option>
-              <option value="work">work</option>
-              <option value="social">social</option>
-              <option value="outdoor">outdoor</option>
-              <option value="other">other</option>
-            </select>
-          </label>
-        </div>
-        <button type="button" disabled={loading} onClick={handleSaveLocation}>
-          保存地点
+        <button type="button" className="secondary" onClick={() => setAdvancedOpen(!advancedOpen)}>
+          {advancedOpen ? '收起可选扩展数据源' : '展开可选扩展数据源（一般无需）'}
         </button>
       </div>
+
+      {advancedOpen && (
+        <>
+          <div className="import-grid">
+            {ADVANCED_IMPORT_OPTIONS.map((opt) => (
+              <div key={opt.type} className="card import-option">
+                <h4>{opt.label}</h4>
+                <p className="meta">{opt.hint}</p>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleImport(opt.type, opt.needsMapping)}
+                >
+                  选择文件导入
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <h3>手动录入地点</h3>
+            <p className="meta">无需 JSON 文件，直接写入 location 缓存</p>
+            <div className="form-grid">
+              <label className="field">
+                日期
+                <input type="date" value={locDate} onChange={(e) => setLocDate(e.target.value)} />
+              </label>
+              <label className="field">
+                地点名称
+                <input
+                  type="text"
+                  value={locPlace}
+                  onChange={(e) => setLocPlace(e.target.value)}
+                  placeholder="例如：公司、家、咖啡厅"
+                />
+              </label>
+              <label className="field">
+                类型
+                <select value={locType} onChange={(e) => setLocType(e.target.value)}>
+                  <option value="home">home</option>
+                  <option value="work">work</option>
+                  <option value="social">social</option>
+                  <option value="outdoor">outdoor</option>
+                  <option value="other">other</option>
+                </select>
+              </label>
+            </div>
+            <button type="button" disabled={loading} onClick={handleSaveLocation}>
+              保存地点
+            </button>
+          </div>
+        </>
+      )}
 
       {mappingOpen && csvPreview && (
         <div className="modal-overlay">

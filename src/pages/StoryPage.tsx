@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { AnalysisRunSummary, LifeStoryBook, NarrativeLine } from '../types/analysis';
+import EmotionArcSparkline from '../components/story/EmotionArcSparkline';
 import { resolveRunId } from '../utils/runSelection';
 
 export default function StoryPage() {
@@ -74,6 +75,7 @@ export default function StoryPage() {
             <h3>{line.title}</h3>
             <span className="meta">{line.themeOrRelation}</span>
             {line.toneShift && <p className="meta">基调变化：{line.toneShift}</p>}
+            {line.emotionArc.length >= 2 && <EmotionArcSparkline arc={line.emotionArc} />}
           </div>
 
           <button type="button" className="secondary" onClick={() => setExpandedLine(expandedLine === line.id ? null : line.id)}>

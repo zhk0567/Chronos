@@ -24,7 +24,15 @@ from schemas.models import (
     StabilityMetric,
     ThemeTrack,
     WarningPattern,
+    WeatherInsight,
     WeatherSensitivity,
+)
+from utils.interpretation import (
+    clean_factor_statement,
+    factor_implication,
+    format_controlled_for,
+    LANGUAGE_TREND_LABELS,
+    TONE_TREND_LABELS,
 )
 
 
@@ -51,6 +59,7 @@ def build_report(
     life_story: LifeStoryBook | None = None,
     self_voice_map: SelfVoiceMap | None = None,
     reframe_candidates: list[ReframeCandidate] | None = None,
+    weather_insights: list[WeatherInsight] | None = None,
 ) -> InsightReport:
     daily_contexts = daily_contexts or []
     environment_sensitivity = environment_sensitivity or []
@@ -62,30 +71,31 @@ def build_report(
     chain_links = chain_links or []
     reframe_candidates = reframe_candidates or []
     self_voice_map = self_voice_map or SelfVoiceMap()
+    weather_insights = weather_insights or []
 
     sections = [
         _stability_section(stability, emotion_series),
-        _factor_section("promoting", "促进因素", promoting),
-        _factor_section("damaging", "损害因素与警示", damaging),
-        _relationship_section(relationships),
+        _factor_section("promoting", "促进因素", promoting, "promoting"),
+        _factor_section("damaging", "损害因素与警示", damaging, "damaging"),
+        _relationship_section(relationships, entry_count),
         _language_section(language_patterns),
         _theme_section(themes),
-        _environment_section(environment_sensitivity, space_emotions),
-        _warning_section(warning_patterns),
+        _environment_section(weather_insights, environment_sensitivity, space_emotions, entry_count),
+        _warning_section(warning_patterns, entry_count),
         _narrative_section(chain_links, life_story, self_voice_map, reframe_candidates),
     ]
 
-    if interaction_effects:
-        sections.insert(4, _interaction_section(interaction_effects))
+    sections.insert(4, _interaction_section(interaction_effects, entry_count))
 
     limitations = _build_limitations(entry_count, emotion_series, context_completeness)
+    executive_summary = _build_executive_summary(
+        anchors, emotion_series, weather_insights, promoting, damaging, entry_count
+    )
 
     completeness = {
         "entries": min(1.0, entry_count / 30),
         "emotion": min(1.0, len(emotion_series) / max(1, entry_count)),
-        "anchors": min(1.0, len(anchors) / 5),
-        "factors": min(1.0, (len(promoting) + len(damaging)) / 3),
-        **context_completeness,
+        "weather": context_completeness.get("weather", 0),
     }
 
     return InsightReport(
@@ -114,6 +124,8 @@ def build_report(
         lifeStory=life_story,
         selfVoiceMap=self_voice_map if self_voice_map.profiles else None,
         reframeCandidates=reframe_candidates,
+        weatherInsights=weather_insights,
+        executiveSummary=executive_summary,
     )
 
 
@@ -143,45 +155,53 @@ def _stability_section(stability: list[StabilityMetric], emotion_series: list) -
     return ReportSection(id="stability", title="情绪稳定性", conclusions=conclusions)
 
 
-def _factor_section(section_id: str, title: str, factors: list[FactorConclusion]) -> ReportSection:
+def _factor_section(
+    section_id: str,
+    title: str,
+    factors: list[FactorConclusion],
+    factor_kind: str,
+) -> ReportSection:
     conclusions = []
     for f in factors:
-        stmt = f.statement
+        stmt = clean_factor_statement(f.statement)
         if f.controlled_for:
-            stmt += f" [controlled: {', '.join(f.controlled_for)}]"
+            stmt += format_controlled_for(f.controlled_for)
+        implications = factor_implication(f.effect_size, factor_kind)
         conclusions.append(
             ReportConclusion(
                 id=f.id,
                 statement=stmt,
                 confidence=f.confidence,
                 evidence=f.evidence,
+                implication=implications,
             )
         )
     if not conclusions:
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement="暂未识别到显著因素（可能因样本量不足或因素不明显）",
+                statement="在当前日记样本中暂未识别到显著因素",
                 confidence=0.3,
-                limitation="需要更多日记数据",
+                limitation="需要更多日记或更明显的情绪变化",
                 evidence=[],
             )
         )
     return ReportSection(id=section_id, title=title, conclusions=conclusions)
 
 
-def _relationship_section(relationships: list[PersonNode]) -> ReportSection:
+def _relationship_section(relationships: list[PersonNode], entry_count: int) -> ReportSection:
     conclusions = []
     for p in relationships[:8]:
         type_label = {"positive": "净正向", "negative": "净负向", "ambivalent": "矛盾型"}.get(
             p.relationship_type.value, ""
         )
+        trend = TONE_TREND_LABELS.get(p.tone_trend, "")
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
                 statement=(
                     f"与「{p.name}」的关系为{type_label}，"
-                    f"情绪基调 {p.emotional_tone:+.2f}，提及 {p.mention_count} 次"
+                    f"情绪基调 {p.emotional_tone:+.2f}，提及 {p.mention_count} 次。{trend}"
                 ),
                 confidence=0.55,
                 evidence=p.evidence,
@@ -191,7 +211,7 @@ def _relationship_section(relationships: list[PersonNode]) -> ReportSection:
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement="未识别到足够的人物关系数据",
+                statement=f"在 {entry_count} 篇日记中，人物提及较少或未形成稳定关系模式",
                 confidence=0.3,
                 evidence=[],
             )
@@ -200,33 +220,38 @@ def _relationship_section(relationships: list[PersonNode]) -> ReportSection:
 
 
 def _language_section(patterns: list[LanguageMetric]) -> ReportSection:
-    return ReportSection(
-        id="language",
-        title="语言与思维模式变迁",
-        conclusions=[
+    conclusions = []
+    for p in patterns:
+        trend_label = LANGUAGE_TREND_LABELS.get(p.trend, p.trend)
+        desc = p.description
+        if trend_label and trend_label not in desc:
+            desc = f"{p.name}：{desc}（趋势：{trend_label}）"
+        conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement=p.description,
+                statement=desc,
                 confidence=p.confidence,
                 evidence=p.evidence,
             )
-            for p in patterns
-        ]
-        or [
+        )
+    if not conclusions:
+        conclusions = [
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
                 statement="语言模式数据不足",
                 confidence=0.2,
                 evidence=[],
             )
-        ],
-    )
+        ]
+    return ReportSection(id="language", title="语言与思维模式变迁", conclusions=conclusions)
 
 
 def _theme_section(themes: list[ThemeTrack]) -> ReportSection:
     conclusions = []
     for t in themes[:8]:
         stmt = f"主题「{t.theme}」从 {t.first_seen} 持续至 {t.last_seen}"
+        if t.peak_date:
+            stmt += f"，高峰出现在 {t.peak_date}"
         if t.framework_shift:
             stmt += f"，{t.framework_shift}"
         conclusions.append(
@@ -250,17 +275,23 @@ def _theme_section(themes: list[ThemeTrack]) -> ReportSection:
 
 
 def _environment_section(
+    weather_insights: list[WeatherInsight],
     sensitivity: list[WeatherSensitivity],
     space: list[SpaceEmotionLink],
+    entry_count: int,
 ) -> ReportSection:
     conclusions = []
-    for s in sensitivity:
+    seen_statements: set[str] = set()
+    for wi in weather_insights:
+        if wi.statement in seen_statements:
+            continue
+        seen_statements.add(wi.statement)
         conclusions.append(
             ReportConclusion(
-                id=str(uuid.uuid4())[:8],
-                statement=s.description,
-                confidence=s.confidence,
-                evidence=s.evidence,
+                id=wi.id,
+                statement=wi.statement,
+                confidence=wi.confidence,
+                evidence=wi.evidence,
             )
         )
     for sp in space:
@@ -270,7 +301,7 @@ def _environment_section(
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement=f"「{sp.place}」为{type_label}空间，情绪基调 {sp.emotional_tone:+.2f}",
+                statement=f"日记中的「{sp.place}」为{type_label}空间，情绪基调 {sp.emotional_tone:+.2f}",
                 confidence=0.5,
                 evidence=sp.evidence,
             )
@@ -279,16 +310,19 @@ def _environment_section(
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement="环境敏感性数据不足（请配置常驻城市或导入位置数据）",
+                statement=(
+                    f"在 {entry_count} 篇日记中，天气与情绪的关联尚不明显。"
+                    "请在设置中保存常驻城市后重新分析，以拉取历史天气。"
+                ),
                 confidence=0.2,
-                limitation="缺少天气或位置数据",
+                limitation="天气数据覆盖不足",
                 evidence=[],
             )
         )
-    return ReportSection(id="environment", title="环境敏感性", conclusions=conclusions)
+    return ReportSection(id="environment", title="天气与情绪", conclusions=conclusions)
 
 
-def _warning_section(patterns: list[WarningPattern]) -> ReportSection:
+def _warning_section(patterns: list[WarningPattern], entry_count: int) -> ReportSection:
     conclusions = [
         ReportConclusion(
             id=p.id,
@@ -302,20 +336,18 @@ def _warning_section(patterns: list[WarningPattern]) -> ReportSection:
         conclusions.append(
             ReportConclusion(
                 id=str(uuid.uuid4())[:8],
-                statement="暂未识别到稳定的个人预警模式",
+                statement=f"在 {entry_count} 篇日记中未发现稳定的个人预警组合",
                 confidence=0.3,
-                limitation="需要更多多源数据与情绪低谷样本",
+                limitation="需要更多情绪低谷样本",
                 evidence=[],
             )
         )
     return ReportSection(id="warnings", title="个人预警模式", conclusions=conclusions)
 
 
-def _interaction_section(effects: list[InteractionEffect]) -> ReportSection:
-    return ReportSection(
-        id="interactions",
-        title="因素交互效应",
-        conclusions=[
+def _interaction_section(effects: list[InteractionEffect], entry_count: int) -> ReportSection:
+    if effects:
+        conclusions = [
             ReportConclusion(
                 id=e.id,
                 statement=e.statement,
@@ -323,8 +355,17 @@ def _interaction_section(effects: list[InteractionEffect]) -> ReportSection:
                 evidence=e.evidence,
             )
             for e in effects
-        ],
-    )
+        ]
+    else:
+        conclusions = [
+            ReportConclusion(
+                id=str(uuid.uuid4())[:8],
+                statement=f"在 {entry_count} 篇日记中未发现显著的因素交互效应（如雨天+周末等）",
+                confidence=0.25,
+                evidence=[],
+            )
+        ]
+    return ReportSection(id="interactions", title="因素交互效应", conclusions=conclusions)
 
 
 def _narrative_section(
@@ -401,20 +442,49 @@ def _build_limitations(
 ) -> list[str]:
     limits = [
         "LLM 抽取结果标注为「系统推断」，与原文明确陈述区分",
-        "缺失的多源数据不做插补",
+        "缺失的数据不做插补",
         "生命故事与重构对话仅提供另一种解读角度，非心理诊断或建议",
     ]
     if context_completeness.get("weather", 0) < 0.5:
-        limits.append("天气数据覆盖不足，环境敏感性结论受限")
-    if context_completeness.get("wearable", 0) < 0.3:
-        limits.append("可穿戴数据不足，生理-心理耦合分析受限")
-    else:
-        limits.append("部分因素分析已尝试控制天气、睡眠等外部变量")
+        limits.append("天气数据覆盖不足：请在设置中保存常驻城市后重新分析")
     if entry_count < 30:
         limits.append(f"当前仅 {entry_count} 篇日记，统计结论置信度受限")
     if len(emotion_series) < 10:
         limits.append("情绪时间序列较短，趋势判断仅供参考")
     return limits
+
+
+def _build_executive_summary(
+    anchors: list[AnchorCard],
+    emotion_series: list,
+    weather_insights: list[WeatherInsight],
+    promoting: list[FactorConclusion],
+    damaging: list[FactorConclusion],
+    entry_count: int,
+) -> list[str]:
+    bullets: list[str] = []
+    if emotion_series:
+        scores = [p.score for p in emotion_series]
+        avg = sum(scores) / len(scores)
+        best_i = max(range(len(scores)), key=lambda i: scores[i])
+        worst_i = min(range(len(scores)), key=lambda i: scores[i])
+        bullets.append(
+            f"共 {entry_count} 篇日记，情绪均值 {avg:.1f}/10；"
+            f"最高 {scores[best_i]:.1f}（{emotion_series[best_i].date}），"
+            f"最低 {scores[worst_i]:.1f}（{emotion_series[worst_i].date}）。"
+        )
+    if weather_insights:
+        bullets.append(weather_insights[0].statement)
+    if anchors:
+        top = sorted(anchors, key=lambda a: -a.confidence)[0]
+        bullets.append(f"重要锚点：{top.date} {top.title}")
+    if promoting:
+        bullets.append(clean_factor_statement(promoting[0].statement))
+    elif damaging:
+        bullets.append(clean_factor_statement(damaging[0].statement))
+    if not bullets:
+        bullets.append("请继续积累日记后重新分析，以获得更稳定的洞察。")
+    return bullets[:5]
 
 
 def render_html(report: InsightReport) -> str:
@@ -428,10 +498,11 @@ def render_html(report: InsightReport) -> str:
                 for e in c.evidence
             )
             lim = f'<p class="limitation">{html.escape(c.limitation)}</p>' if c.limitation else ""
+            conf_label = _confidence_label(c.confidence)
             items += f"""
             <div class="conclusion">
               <p class="statement">{html.escape(c.statement)}</p>
-              <p class="confidence">置信度: {c.confidence:.0%}</p>
+              <p class="confidence">置信度: {c.confidence:.0%} ({conf_label})</p>
               {lim}
               <ul>{ev}</ul>
             </div>"""
@@ -443,17 +514,32 @@ def render_html(report: InsightReport) -> str:
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light">
 <title>Chronos 心理健康洞察报告</title>
 <style>
-  body {{ font-family: "Noto Serif SC", Georgia, serif; background: #f5f0e8; color: #3d3630; max-width: 800px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.7; }}
-  h1 {{ color: #5c4a3a; border-bottom: 2px solid #c4a882; padding-bottom: 0.5rem; }}
-  h2 {{ color: #6b5a48; margin-top: 2rem; }}
-  .meta {{ color: #8a7a6a; font-size: 0.9rem; }}
-  .conclusion {{ background: #faf6ee; border-left: 3px solid #c4a882; padding: 1rem; margin: 1rem 0; border-radius: 0 4px 4px 0; }}
-  .confidence {{ font-size: 0.85rem; color: #8a7a6a; }}
-  .evidence {{ font-size: 0.85rem; color: #5c5048; }}
-  .date {{ font-weight: bold; }}
-  .limitations {{ background: #fff8f0; padding: 1rem; border-radius: 4px; margin-top: 2rem; }}
+  :root {{
+    --bg-base: #eceae6;
+    --bg-surface: #f5f4f1;
+    --bg-elevated: #fafaf8;
+    --text-primary: #3a3834;
+    --text-muted: #7a756c;
+    --accent: #6b8f7a;
+    --accent-soft: rgba(107, 143, 122, 0.12);
+    --border: rgba(0, 0, 0, 0.07);
+    --warn-bg: rgba(160, 136, 80, 0.1);
+  }}
+  body {{ font-family: "Noto Sans SC", system-ui, sans-serif; background: var(--bg-base); color: var(--text-primary); max-width: 820px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.7; }}
+  h1 {{ font-family: "Noto Serif SC", Georgia, serif; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem; font-weight: 600; }}
+  h2 {{ font-family: "Noto Serif SC", Georgia, serif; color: var(--text-primary); margin-top: 2rem; font-size: 1.15rem; }}
+  h3 {{ font-size: 1rem; color: var(--text-muted); }}
+  .meta {{ color: var(--text-muted); font-size: 0.9rem; }}
+  .conclusion {{ background: var(--bg-surface); border-left: 3px solid var(--accent); padding: 1rem 1.1rem; margin: 1rem 0; border-radius: 0 10px 10px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }}
+  .statement {{ margin: 0 0 0.5rem; }}
+  .confidence {{ font-size: 0.85rem; color: var(--text-muted); margin: 0; }}
+  .limitation {{ font-size: 0.85rem; color: var(--text-muted); font-style: italic; }}
+  .evidence {{ font-size: 0.85rem; color: var(--text-primary); margin: 0.35rem 0; }}
+  .date {{ font-weight: 600; color: var(--accent); }}
+  .limitations {{ background: var(--bg-elevated); padding: 1.1rem 1.25rem; border-radius: 10px; margin-top: 2rem; border: 1px solid var(--border); }}
 </style>
 </head>
 <body>
@@ -468,3 +554,11 @@ def render_html(report: InsightReport) -> str:
   </div>
 </body>
 </html>"""
+
+
+def _confidence_label(confidence: float) -> str:
+    if confidence >= 0.7:
+        return "高"
+    if confidence >= 0.45:
+        return "中"
+    return "低"

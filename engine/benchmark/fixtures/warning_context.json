@@ -1,0 +1,22 @@
+[
+  { "date": "2026-05-01", "weather": { "temp": 18, "precipitation": 0, "sunshine": 6 }, "rhythm": { "weekday": 4, "weekdayLabel": "周四", "month": 5 } },
+  { "date": "2026-05-02", "weather": { "temp": 19, "precipitation": 0, "sunshine": 7 }, "rhythm": { "weekday": 5, "weekdayLabel": "周五", "month": 5 } },
+  { "date": "2026-05-03", "weather": { "temp": 14, "precipitation": 8, "sunshine": 1 }, "rhythm": { "weekday": 6, "weekdayLabel": "周六", "month": 5 } },
+  { "date": "2026-05-04", "weather": { "temp": 13, "precipitation": 12, "sunshine": 0 }, "rhythm": { "weekday": 0, "weekdayLabel": "周日", "month": 5 } },
+  { "date": "2026-05-05", "weather": { "temp": 12, "precipitation": 10, "sunshine": 0 }, "rhythm": { "weekday": 1, "weekdayLabel": "周一", "month": 5 } },
+  { "date": "2026-05-06", "weather": { "temp": 15, "precipitation": 6, "sunshine": 1 }, "rhythm": { "weekday": 2, "weekdayLabel": "周二", "month": 5 } },
+  { "date": "2026-05-07", "weather": { "temp": 16, "precipitation": 2, "sunshine": 2 }, "rhythm": { "weekday": 3, "weekdayLabel": "周三", "month": 5 } },
+  { "date": "2026-05-08", "weather": { "temp": 18, "precipitation": 0, "sunshine": 4 }, "rhythm": { "weekday": 4, "weekdayLabel": "周四", "month": 5 } },
+  { "date": "2026-05-09", "weather": { "temp": 19, "precipitation": 0, "sunshine": 5 }, "rhythm": { "weekday": 5, "weekdayLabel": "周五", "month": 5 } },
+  { "date": "2026-05-10", "weather": { "temp": 22, "precipitation": 0, "sunshine": 8 }, "rhythm": { "weekday": 6, "weekdayLabel": "周六", "month": 5 } },
+  { "date": "2026-05-11", "weather": { "temp": 23, "precipitation": 0, "sunshine": 9 }, "rhythm": { "weekday": 0, "weekdayLabel": "周日", "month": 5 } },
+  { "date": "2026-05-12", "weather": { "temp": 12, "precipitation": 10, "sunshine": 1 }, "rhythm": { "weekday": 1, "weekdayLabel": "周一", "month": 5 } },
+  { "date": "2026-05-13", "weather": { "temp": 11, "precipitation": 15, "sunshine": 0 }, "rhythm": { "weekday": 2, "weekdayLabel": "周二", "month": 5 } },
+  { "date": "2026-05-14", "weather": { "temp": 14, "precipitation": 8, "sunshine": 1 }, "rhythm": { "weekday": 3, "weekdayLabel": "周三", "month": 5 } },
+  { "date": "2026-05-15", "weather": { "temp": 15, "precipitation": 3, "sunshine": 2 }, "rhythm": { "weekday": 4, "weekdayLabel": "周四", "month": 5 } },
+  { "date": "2026-05-16", "weather": { "temp": 19, "precipitation": 0, "sunshine": 6 }, "rhythm": { "weekday": 5, "weekdayLabel": "周五", "month": 5 } },
+  { "date": "2026-05-17", "weather": { "temp": 21, "precipitation": 0, "sunshine": 7 }, "rhythm": { "weekday": 6, "weekdayLabel": "周六", "month": 5 } },
+  { "date": "2026-05-18", "weather": { "temp": 24, "precipitation": 0, "sunshine": 9 }, "rhythm": { "weekday": 0, "weekdayLabel": "周日", "month": 5 } },
+  { "date": "2026-05-19", "weather": { "temp": 22, "precipitation": 0, "sunshine": 8 }, "rhythm": { "weekday": 1, "weekdayLabel": "周一", "month": 5 } },
+  { "date": "2026-05-20", "weather": { "temp": 20, "precipitation": 0, "sunshine": 6 }, "rhythm": { "weekday": 2, "weekdayLabel": "周二", "month": 5 } }
+]

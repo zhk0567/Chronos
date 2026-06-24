@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
 
 import ImportPage from './pages/ImportPage';
 import AnalysisPage from './pages/AnalysisPage';
@@ -8,6 +9,7 @@ import DataSourcesPage from './pages/DataSourcesPage';
 import StoryPage from './pages/StoryPage';
 import SelvesPage from './pages/SelvesPage';
 import ReframePage from './pages/ReframePage';
+import { applyTheme } from './utils/theme';
 
 const NAV_GROUPS = [
   {
@@ -34,6 +36,10 @@ const NAV_GROUPS = [
 ];
 
 export default function App() {
+  useEffect(() => {
+    window.chronosAPI.getSettings().then((s) => applyTheme(s.theme ?? 'light'));
+  }, []);
+
   return (
     <div className="app">
       <aside className="app-sidebar">

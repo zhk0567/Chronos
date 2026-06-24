@@ -1,0 +1,13 @@
+{
+  "name": "intensity_v1",
+  "description": "10 篇合成日记，聚焦情绪强度负向低谷锚点",
+  "anchors": [
+    {
+      "emergenceType": "intensity",
+      "titleContains": "低谷",
+      "date": "2026-03-15"
+    }
+  ],
+  "themes": [],
+  "relationships": []
+}

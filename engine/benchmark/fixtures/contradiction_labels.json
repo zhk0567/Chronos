@@ -1,0 +1,18 @@
+{
+  "name": "contradiction_v1",
+  "description": "6 篇合成日记，聚焦工作主题自我矛盾锚点",
+  "anchors": [
+    {
+      "emergenceType": "contradiction",
+      "titleContains": "工作",
+      "date": "2026-02-08"
+    }
+  ],
+  "themes": [
+    {
+      "keyword": "工作",
+      "minMentions": 2
+    }
+  ],
+  "relationships": []
+}

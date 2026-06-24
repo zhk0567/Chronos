@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from llm.ollama_client import make_evidence
+from utils.interpretation import morph_type_label
 from schemas.models import (
     AnchorCard,
     DiaryEntry,
@@ -33,6 +34,7 @@ def detect_anchors(
     anchors.extend(_structure_anchors(morphs, entries))
     anchors.extend(_narrative_anchors(units, entries))
     anchors.extend(_silence_anchors(units, entries))
+    anchors.extend(_contradiction_anchors(units, entries, emotion_series))
     return sorted(anchors, key=lambda a: a.date)
 
 
@@ -120,22 +122,39 @@ def _structure_anchors(morphs: list[MorphResult], entries: list[DiaryEntry]) -> 
         by_date[m.date].append(m.type)
 
     dates = sorted(by_date.keys())
+    last_structure_date: str | None = None
     for i in range(1, len(dates)):
+        gap_days = (
+            datetime.strptime(dates[i], "%Y-%m-%d") - datetime.strptime(dates[i - 1], "%Y-%m-%d")
+        ).days
+        if gap_days < 3:
+            continue
+        if last_structure_date:
+            since_last = (
+                datetime.strptime(dates[i], "%Y-%m-%d")
+                - datetime.strptime(last_structure_date, "%Y-%m-%d")
+            ).days
+            if since_last < 7:
+                continue
         prev_dominant = Counter(by_date[dates[i - 1]]).most_common(1)[0][0]
         curr_dominant = Counter(by_date[dates[i]]).most_common(1)[0][0]
         if prev_dominant != curr_dominant:
+            last_structure_date = dates[i]
             anchors.append(
                 AnchorCard(
                     id=str(uuid.uuid4())[:8],
                     date=dates[i],
                     emergenceType=EmergenceType.STRUCTURE,
                     title="日记形态突变",
-                    description=f"主导形态从 {prev_dominant.value} 转为 {curr_dominant.value}",
-                    confidence=0.5,
+                    description=(
+                        f"主导形态从「{morph_type_label(prev_dominant.value)}」"
+                        f"转为「{morph_type_label(curr_dominant.value)}」（间隔 {gap_days} 天）"
+                    ),
+                    confidence=0.55 if gap_days >= 7 else 0.5,
                     evidence=[
                         make_evidence(
                             dates[i],
-                            f"形态变化: {prev_dominant.value} → {curr_dominant.value}",
+                            f"形态变化: {morph_type_label(prev_dominant.value)} → {morph_type_label(curr_dominant.value)}",
                             source=EvidenceSource.INFERRED,
                         )
                     ],
@@ -214,4 +233,93 @@ def _silence_anchors(units: list[InfoUnit], entries: list[DiaryEntry]) -> list[A
                     evidence=[make_evidence(sorted_dates[-1], f"最后提及 {entity}", source=EvidenceSource.INFERRED)],
                 )
             )
+    return anchors
+
+
+_POSITIVE_CUES = frozenset(
+    {"开心", "满意", "喜欢", "希望", "轻松", "高兴", "值得", "期待", "顺利", "幸福", "感恩", "热爱"}
+)
+_NEGATIVE_CUES = frozenset(
+    {"焦虑", "后悔", "讨厌", "担心", "失望", "痛苦", "害怕", "愤怒", "沮丧", "失败", "绝望", "内疚", "疲惫"}
+)
+
+
+def _text_sentiment(text: str) -> int:
+    """返回 -1 / 0 / +1 粗粒度情感极性。"""
+    pos = sum(1 for w in _POSITIVE_CUES if w in text)
+    neg = sum(1 for w in _NEGATIVE_CUES if w in text)
+    if pos > neg:
+        return 1
+    if neg > pos:
+        return -1
+    return 0
+
+
+def _topic_key(unit: InfoUnit) -> str | None:
+    if unit.thought_anchor and unit.thought_anchor.core_concern:
+        return unit.thought_anchor.core_concern.strip()[:20]
+    if unit.event_package and unit.event_package.summary:
+        return unit.event_package.summary.strip()[:20]
+    return None
+
+
+def _contradiction_anchors(
+    units: list[InfoUnit],
+    entries: list[DiaryEntry],
+    emotion_series: list[EmotionPoint],
+) -> list[AnchorCard]:
+    anchors: list[AnchorCard] = []
+    emotion_by_date = {p.date: p for p in emotion_series}
+    topic_occurrences: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+
+    for unit in units:
+        key = _topic_key(unit)
+        if not key or len(key) < 2:
+            continue
+        text = unit.source_span.text if unit.source_span else ""
+        sentiment = _text_sentiment(text)
+        if unit.emotion_marker and unit.emotion_marker.label:
+            label_sent = _text_sentiment(unit.emotion_marker.label)
+            if label_sent != 0:
+                sentiment = label_sent
+        if sentiment == 0 and unit.date in emotion_by_date:
+            val = emotion_by_date[unit.date].valence
+            sentiment = 1 if val > 0.15 else (-1 if val < -0.15 else 0)
+        if sentiment == 0:
+            continue
+        topic_occurrences[key].append((unit.date, text[:120], sentiment))
+
+    for topic, occurrences in topic_occurrences.items():
+        if len(occurrences) < 2:
+            continue
+        sorted_occ = sorted(occurrences, key=lambda x: x[0])
+        for i in range(len(sorted_occ)):
+            for j in range(i + 1, len(sorted_occ)):
+                d0, t0, s0 = sorted_occ[i]
+                d1, t1, s1 = sorted_occ[j]
+                if s0 * s1 >= 0:
+                    continue
+                span = (
+                    datetime.strptime(d1, "%Y-%m-%d") - datetime.strptime(d0, "%Y-%m-%d")
+                ).days
+                if span > 60:
+                    continue
+                anchors.append(
+                    AnchorCard(
+                        id=str(uuid.uuid4())[:8],
+                        date=d1,
+                        emergenceType=EmergenceType.CONTRADICTION,
+                        title=f"「{topic}」自我矛盾",
+                        description=f"关于「{topic}」在 {span} 天内出现相反态度（{d0} vs {d1}）",
+                        confidence=min(0.75, 0.5 + span * 0.003),
+                        evidence=[
+                            make_evidence(d0, t0, source=EvidenceSource.EXPLICIT),
+                            make_evidence(d1, t1, source=EvidenceSource.EXPLICIT),
+                        ],
+                    )
+                )
+                break
+            else:
+                continue
+            break
     return anchors

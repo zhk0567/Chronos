@@ -2,6 +2,8 @@
 
 个人心理健康洞察系统。从纵向日记文本出发，融合多源语境数据，自动识别情绪锚点、促进与损害因素，生成有证据支持的结构化洞察报告。
 
+**完整项目文档（唯一权威）** → **[docs/project.md](docs/project.md)**
+
 ## 功能
 
 ### 一期（日记文本）
@@ -39,7 +41,7 @@
 - **桌面端**：Electron 33 + React 18 + TypeScript + Vite
 - **分析引擎**：Python 3.11+（FastAPI、pandas、scipy、networkx、jieba、chinese-calendar）
 - **天气**：Open-Meteo Archive API（仅坐标+日期，不含日记）
-- **语义抽取**：本地 Ollama（默认 `minimax-m3:cloud`）
+- **语义抽取**：本地 Ollama（默认 `gemma3:4b` 批量抽取；UI 可改）
 - **数据**：本地 `data/` 目录（JSON 文件）
 
 ## 环境要求
@@ -59,7 +61,7 @@ cd F:\commercial\Chronos
 ## 使用流程
 
 1. **导入**：同步 Echo 今年日记
-2. **设置**：配置常驻城市（如「北京」），可点击「测试天气连接」验证 Open-Meteo
+2. **设置**：配置常驻城市（如「洛阳」），可点击「测试天气连接」验证 Open-Meteo
 3. **数据源**（可选）：导入 Apple Health / CSV（非标准列名时映射）/ GPX / 手动地点
 4. **分析**：运行 18 步三期流水线
 5. **报告**：查看多板块结论 + 数据完整性
@@ -87,3 +89,9 @@ data/
 - 天气 API 仅发送经纬度与日期范围
 - 分析结论区分「原文明说」与「系统推断」
 - 缺失数据不插补、不猜测
+
+## 文档
+
+**唯一权威文档**：[docs/project.md](docs/project.md)（架构、功能、接口、数据模型、算法规则、质量差距、维护规范）
+
+改代码须同步更新该文档对应章节。

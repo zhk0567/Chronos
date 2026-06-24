@@ -3,6 +3,7 @@
 import type {
   AnalysisProgress,
   AnalysisRunSummary,
+  BenchmarkResult,
   ColumnMapping,
   ContextCompleteness,
   ContextImportResult,
@@ -15,6 +16,7 @@ import type {
   LifeStoryBook,
   ReframeCandidate,
   ReframeSession,
+  RunFeedback,
   SelfVoiceMap,
   SyncResult,
   UserSettings,
@@ -55,10 +57,40 @@ export interface ChronosAPI {
   listRuns(): Promise<AnalysisRunSummary[]>;
   getDefaultRunId(): Promise<string | null>;
   getReport(runId: string): Promise<InsightReport | null>;
-  startAnalysis(model: string): Promise<InsightReport>;
+  startAnalysis(model: string, resumeRunId?: string | null): Promise<InsightReport>;
+  cancelAnalysis(): Promise<boolean>;
   exportReportHtml(runId: string): Promise<string | null>;
   exportReportJson(runId: string): Promise<string | null>;
   saveExport(content: string, defaultName: string): Promise<boolean>;
+  getDataInventory(): Promise<{ entries: number; analysisRuns: number; contextFiles: number }>;
+  deleteAllUserData(): Promise<{
+    ok: boolean;
+    deleted: { entries: number; analysisRuns: number; contextFiles: number; narrativeFiles: number };
+  }>;
+  deleteDiaryEntries(options?: { preserveAnonymizedAnalysis?: boolean }): Promise<{
+    ok: boolean;
+    deleted: {
+      entries: number;
+      runsAnonymized: number;
+      filesDeleted: number;
+      filesRedacted: number;
+      narrativeFiles: number;
+    };
+    preserveAnonymizedAnalysis: boolean;
+  }>;
+  deleteAnalysisRun(runId: string): Promise<{ ok: boolean; deleted: boolean }>;
+  getFeedback(runId: string): Promise<RunFeedback>;
+  setFeedback(
+    runId: string,
+    targetType: 'conclusion' | 'anchor',
+    targetId: string,
+    rating: 'up' | 'down' | null
+  ): Promise<RunFeedback>;
+  runBenchmark(): Promise<BenchmarkResult>;
+  getLastBenchmark(): Promise<BenchmarkResult | null>;
+  getLastBenchmarkSuite(): Promise<BenchmarkSuiteResult | null>;
+  getFeedbackSummary(): Promise<FeedbackSummary>;
+  exportFeedbackJson(): Promise<string>;
   onAnalysisProgress(callback: (progress: AnalysisProgress) => void): () => void;
 }
 

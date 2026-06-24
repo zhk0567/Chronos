@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 
 from llm.ollama_client import OllamaClient, DEFAULT_MODEL
 from pipeline.reframe_dialogue import finalize_alternative, send_message, start_session
-from pipeline.runner import AnalysisPipeline, get_data_dir
+from pipeline.runner import AnalysisPipeline
+from pipeline.artifacts import get_data_dir
+from pipeline.cancel_registry import AnalysisCancelledError, cancel_run
 from schemas.models import AnalysisRequest, ReframeCandidate
 
 app = FastAPI(title="Chronos Engine")
@@ -37,6 +39,12 @@ class ReframeMessageRequest(BaseModel):
 class ReframeFinalizeRequest(BaseModel):
     session_id: str = Field(alias="sessionId")
     model: str = DEFAULT_MODEL
+
+    model_config = {"populate_by_name": True}
+
+
+class CancelAnalysisRequest(BaseModel):
+    run_id: str = Field(alias="runId")
 
     model_config = {"populate_by_name": True}
 
@@ -87,12 +95,23 @@ async def analyze(request: AnalysisRequest):
 
         def run_pipeline():
             try:
-                report = pipeline.run(request.run_id, request.entries, on_progress=on_progress)
+                report = pipeline.run(
+                    request.run_id,
+                    request.entries,
+                    on_progress=on_progress,
+                    resume=request.resume,
+                )
                 complete = json.dumps(
                     {"type": "complete", "data": report.model_dump(by_alias=True)},
                     ensure_ascii=False,
                 )
                 q.put(("complete", complete))
+            except AnalysisCancelledError as e:
+                error = json.dumps(
+                    {"type": "error", "data": {"message": str(e), "cancelled": True}},
+                    ensure_ascii=False,
+                )
+                q.put(("error", error))
             except Exception as e:
                 error = json.dumps(
                     {"type": "error", "data": {"message": str(e)}},
@@ -109,6 +128,52 @@ async def analyze(request: AnalysisRequest):
                 break
 
     return StreamingResponse(generate(), media_type="text/event-stream; charset=utf-8")
+
+
+@app.post("/analyze/cancel")
+def cancel_analysis(req: CancelAnalysisRequest):
+    ok = cancel_run(req.run_id)
+    return {"ok": ok, "runId": req.run_id}
+
+
+@app.get("/benchmark/demo")
+def benchmark_demo():
+    from benchmark.evaluator import load_fixture, result_to_dict, run_benchmark
+
+    entries, labels, contexts = load_fixture("demo")
+    result = run_benchmark(entries, labels, use_llm=False, contexts=contexts)
+    payload = result_to_dict(result)
+    data_dir = get_data_dir()
+    out_dir = data_dir / "benchmark"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "last_result.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return payload
+
+
+@app.get("/benchmark/all")
+def benchmark_all():
+    from datetime import datetime, timezone
+
+    from benchmark.evaluator import result_to_dict, run_all_benchmarks
+
+    results = run_all_benchmarks(use_llm=False)
+    payload = {
+        "ranAt": datetime.now(timezone.utc).isoformat(),
+        "fixtures": [result_to_dict(r) for r in results],
+    }
+    data_dir = get_data_dir()
+    out_dir = data_dir / "benchmark"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "last_suite.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if payload["fixtures"]:
+        (out_dir / "last_result.json").write_text(
+            json.dumps(payload["fixtures"][-1], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return payload
 
 
 @app.post("/reframe/start")
